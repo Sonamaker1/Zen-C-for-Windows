@@ -37,7 +37,6 @@ void print_usage()
     printf("  transpile Transpile to C code only (no compilation)\n");
     printf("  lsp     Start Language Server\n");
     printf("Options:\n");
-    printf("  --help          Print this help message\n");
     printf("  --version       Print version information\n");
     printf("  -o <file>       Output executable name\n");
     printf("  --emit-c        Keep generated C file (out.c)\n");
@@ -55,7 +54,14 @@ void print_usage()
 int main(int argc, char **argv)
 {
     memset(&g_config, 0, sizeof(g_config));
-    strcpy(g_config.cc, "gcc");
+
+    
+    #if defined(_WIN32)
+        strcpy(g_config.cc, "zig cc");
+    #else
+        strcpy(g_config.cc, "gcc");
+    #endif
+    
 
     if (argc < 2)
     {
@@ -92,11 +98,6 @@ int main(int argc, char **argv)
     else if (strcmp(command, "build") == 0)
     {
         // default mode
-    }
-    else if (strcmp(command, "--help") == 0 || strcmp(command, "-h") == 0)
-    {
-        print_usage();
-        return 0;
     }
     else if (command[0] == '-')
     {
@@ -151,7 +152,11 @@ int main(int argc, char **argv)
         }
         else if (strcmp(arg, "--cpp") == 0)
         {
-            strcpy(g_config.cc, "g++");
+            #if defined(_WIN32)
+                strcpy(g_config.cc, "zig c++");
+            #else
+                strcpy(g_config.cc, "g++");
+            #endif
             g_config.use_cpp = 1;
         }
         else if (strcmp(arg, "--cuda") == 0)
@@ -173,6 +178,10 @@ int main(int argc, char **argv)
                 if (strcmp(cc_arg, "zig") == 0)
                 {
                     strcpy(g_config.cc, "zig cc");
+                }
+                else if (strcmp(cc_arg, "zig++") == 0)
+                {
+                    strcpy(g_config.cc, "zig c++");
                 }
                 else
                 {
@@ -326,11 +335,38 @@ int main(int argc, char **argv)
 
     // Compile C
     char cmd[8192];
-    char *outfile = g_config.output_file ? g_config.output_file : "a.out";
+    #if defined(_WIN32)
+    const char *outfile = g_config.output_file ? g_config.output_file : "a.exe";
+    #else
+    const char *outfile = g_config.output_file ? g_config.output_file : "a.out";
+    #endif
 
-    snprintf(cmd, sizeof(cmd), "%s %s %s %s %s -o %s %s -lm %s -I./src %s", g_config.cc,
-             g_config.gcc_flags, g_cflags, g_config.is_freestanding ? "-ffreestanding" : "", "",
-             outfile, temp_source_file, g_parser_ctx->has_async ? "-lpthread" : "", g_link_flags);
+    #if defined(_WIN32)
+        // Windows: no -lm, no -lpthread
+        snprintf(cmd, sizeof(cmd),
+            "%s %s %s %s -o %s %s -I./src %s",
+            g_config.cc,
+            g_config.gcc_flags,
+            g_cflags,
+            g_config.is_freestanding ? "-ffreestanding" : "",
+            outfile,
+            temp_source_file,
+            g_link_flags
+        );
+    #else
+        snprintf(cmd, sizeof(cmd),
+            "%s %s %s %s -o %s %s -lm %s -I./src %s",
+            g_config.cc,
+            g_config.gcc_flags,
+            g_cflags,
+            g_config.is_freestanding ? "-ffreestanding" : "",
+            outfile,
+            temp_source_file,
+            g_parser_ctx->has_async ? "-lpthread" : "",
+            g_link_flags
+        );
+    #endif
+
 
     if (g_config.verbose)
     {
@@ -357,17 +393,28 @@ int main(int argc, char **argv)
     if (g_config.mode_run)
     {
         char run_cmd[2048];
-        sprintf(run_cmd, "./%s", outfile);
+
+    #if defined(_WIN32)
+        // Windows: no "./". Use quotes so paths with spaces work.
+        snprintf(run_cmd, sizeof(run_cmd), "\"%s\"", outfile);
+    #else
+        // POSIX: execute from current directory
+        snprintf(run_cmd, sizeof(run_cmd), "\"./%s\"", outfile);
+    #endif
+
         ret = system(run_cmd);
+
         remove(outfile);
         zptr_plugin_mgr_cleanup();
         zen_trigger_global();
-#if defined(WIFEXITED) && defined(WEXITSTATUS)
+
+    #if defined(WIFEXITED) && defined(WEXITSTATUS)
         return WIFEXITED(ret) ? WEXITSTATUS(ret) : ret;
-#else
+    #else
         return ret;
-#endif
+    #endif
     }
+
 
     zptr_plugin_mgr_cleanup();
     zen_trigger_global();

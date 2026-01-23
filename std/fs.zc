@@ -1,7 +1,7 @@
-import "./core.zc"
-import "./result.zc"
-import "./string.zc"
-import "./vec.zc"
+import "std/core.zc"
+import "std/result.zc"
+import "std/string.zc"
+import "std/vec.zc"
 
 const Z_SEEK_SET: int = 0;
 const Z_SEEK_END: int = 2;
@@ -13,6 +13,19 @@ raw {
     #include <dirent.h>
     #include <sys/stat.h>
     #include <unistd.h>
+
+    #if defined(_WIN32)
+        #include <direct.h>
+        typedef struct _stat zc_stat_t;
+        #define zc_stat _stat
+        #define ZC_ISDIR_MODE(mode) (((mode) & _S_IFDIR) != 0)
+        #define ZC_SEP '\\'
+    #else
+        typedef struct stat zc_stat_t;
+        #define zc_stat stat
+        #define ZC_ISDIR_MODE(mode) S_ISDIR(mode)
+        #define ZC_SEP '/'
+    #endif
 
     // typedef needed for Vec<DirEntry*> generation if inferred
     typedef struct DirEntry* DirEntryPtr;
@@ -78,13 +91,88 @@ raw {
         return 0;
     }
     
-    int _z_fs_read_entry(void* dir, char* out_name, int buf_size, int* is_dir) {
-        struct dirent* ent = readdir((DIR*)dir);
+    typedef struct ZDir {
+        DIR* d;
+        char base[1024];
+    } ZDir;
+
+    void* _z_fs_open_dir(const char* path) {
+        DIR* d = opendir(path);
+        if (!d) return NULL;
+        ZDir* z = malloc(sizeof(ZDir));
+        z->d = d;
+        strncpy(z->base, path, sizeof(z->base)-1);
+        z->base[sizeof(z->base)-1] = 0;
+        return z;
+    }
+
+    // FULL VERSION: no d_type, determines directory by stat() on base + name
+    int _z_fs_read_entry(void *dir, char *out_name, int buf_size, int *is_dir) {
+        if (!dir || !out_name || buf_size <= 0 || !is_dir) return 0;
+
+        ZDir *z = (ZDir *)dir;
+
+        struct dirent *ent = readdir(z->d);
         if (!ent) return 0;
+
+        // Copy name out
         strncpy(out_name, ent->d_name, buf_size - 1);
         out_name[buf_size - 1] = 0;
-        *is_dir = (ent->d_type == DT_DIR);
+
+        // Default: not a directory (until proven)
+        *is_dir = 0;
+
+        // Skip stat for "." and ".." (optional, but often helpful)
+        if (strcmp(out_name, ".") == 0 || strcmp(out_name, "..") == 0) {
+            return 1;
+        }
+
+        // Build full path: base + (sep if needed) + out_name
+        char full[4096];
+        size_t n = 0;
+
+        if (z->base[0]) {
+            n = strlen(z->base);
+            if (n >= sizeof(full) - 1) {
+                // base path too long, just report name and is_dir=0
+                return 1;
+            }
+            memcpy(full, z->base, n);
+
+            // Add separator if base doesn't already end in one
+            char last = full[n - 1];
+            if (last != '/' && last != '\\') {
+                if (n + 1 >= sizeof(full) - 1) return 1;
+                full[n++] = ZC_SEP;
+            }
+        }
+
+        size_t m = strlen(out_name);
+        if (n + m >= sizeof(full) - 1) {
+            return 1;
+        }
+        memcpy(full + n, out_name, m + 1); // includes '\0'
+
+        // stat() to determine directory
+        zc_stat_t st;
+        if (zc_stat(full, &st) == 0) {
+    #if defined(_WIN32)
+            *is_dir = ZC_ISDIR_MODE(st.st_mode);
+    #else
+            *is_dir = ZC_ISDIR_MODE(st.st_mode);
+    #endif
+        } else {
+            *is_dir = 0;
+        }
+
         return 1;
+    }
+    
+    void _z_fs_close_dir(void* dir) {
+        ZDir* z = (ZDir*)dir;
+        if (!z) return;
+        closedir(z->d);
+        free(z);
     }
 
     int _z_fs_mkdir(char* path) {
