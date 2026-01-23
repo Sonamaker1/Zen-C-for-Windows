@@ -110,6 +110,9 @@ static void zc_add_msvc_toolchain_flags(
     appendf(cflags, cflags_cap, " -std=c++20");
     appendf(cflags, cflags_cap, " -nostdinc++");
 
+    // Force /MD-style CRT selection for MSVC builds (use DLL CRT)
+    appendf(cflags, cflags_cap, " -D_DLL");
+
     appendf(cflags, cflags_cap, " -isystem \"%s\"", msvc_inc);
     appendf(cflags, cflags_cap, " -isystem \"%s\"", sdk_inc_um);
     appendf(cflags, cflags_cap, " -isystem \"%s\"", sdk_inc_shared);
@@ -121,8 +124,11 @@ static void zc_add_msvc_toolchain_flags(
     appendf(linkflags, linkflags_cap, " -L\"%s\"", sdk_lib_um);
     appendf(linkflags, linkflags_cap, " -L\"%s\"", sdk_lib_ucrt);
 
-    // CRT / runtime
-    appendf(linkflags, linkflags_cap, " -lvcruntime -lucrt -lmsvcrt -lmsvcprt -llegacy_stdio_definitions");
+    // IMPORTANT:
+    // Do NOT explicitly link libvcruntime/libucrt here (those are the static CRT libs),
+    // because it can conflict with the DLL import libs that lld-link/zig pulls in for /MD.
+    // Only link the C++ STL import lib + legacy stdio helpers; the rest is resolved via defaults.
+    appendf(linkflags, linkflags_cap, " -lmsvcprt -llegacy_stdio_definitions");
 
     // Core Win32 libs
     appendf(linkflags, linkflags_cap, " -lkernel32 -luser32 -ladvapi32 -lntdll");
@@ -505,13 +511,13 @@ int main(int argc, char **argv)
     {
         char run_cmd[2048];
 
-    #if defined(_WIN32)
+#if defined(_WIN32)
         // Windows: no "./". Use quotes so paths with spaces work.
         snprintf(run_cmd, sizeof(run_cmd), "\"%s\"", outfile);
-    #else
+#else
         // POSIX: execute from current directory
         snprintf(run_cmd, sizeof(run_cmd), "\"./%s\"", outfile);
-    #endif
+#endif
 
         ret = system(run_cmd);
 
