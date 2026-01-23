@@ -2047,7 +2047,7 @@ char *process_fstring(ParserContext *ctx, const char *content, char ***used_syms
         }
 
         *p = 0;
-        char *expr_str = brace + 1;
+        char *expr = brace + 1;
         char *fmt = NULL;
         if (colon)
         {
@@ -2055,19 +2055,34 @@ char *process_fstring(ParserContext *ctx, const char *content, char ***used_syms
             fmt = colon + 1;
         }
 
-        // Parse expression fully to handle default arguments etc.
-        Lexer expr_lex;
-        lexer_init(&expr_lex, expr_str);
-        ASTNode *expr_node = parse_expression(ctx, &expr_lex);
-
-        // Codegen expression to temporary buffer
-        char *code_buffer = NULL;
-        size_t code_len = 0;
-        FILE *mem_stream = open_memstream(&code_buffer, &code_len);
-        if (mem_stream)
+        // Analyze usage in expression
         {
-            codegen_expression(ctx, expr_node, mem_stream);
-            fclose(mem_stream);
+            Lexer lex;
+            lexer_init(&lex, expr);
+            Token t;
+            while ((t = lexer_next(&lex)).type != TOK_EOF)
+            {
+                if (t.type == TOK_IDENT)
+                {
+                    char *name = token_strdup(t);
+                    Symbol *sym = find_symbol_entry(ctx, name);
+                    if (sym)
+                    {
+                        sym->is_used = 1;
+                    }
+
+                    if (used_syms && count)
+                    {
+                        *used_syms = xrealloc(*used_syms, sizeof(char *) * (*count + 1));
+                        (*used_syms)[*count] = name;
+                        (*count)++;
+                    }
+                    else
+                    {
+                        free(name);
+                    }
+                }
+            }
         }
 
         if (fmt)
@@ -2075,42 +2090,16 @@ char *process_fstring(ParserContext *ctx, const char *content, char ***used_syms
             strcat(gen, "sprintf(_t, \"%");
             strcat(gen, fmt);
             strcat(gen, "\", ");
-            if (code_buffer)
-            {
-                strcat(gen, code_buffer);
-            }
-            else
-            {
-                strcat(gen, expr_str); // Fallback
-            }
+            strcat(gen, expr);
             strcat(gen, "); strcat(_b, _t); ");
         }
         else
         {
             strcat(gen, "sprintf(_t, _z_str(");
-            if (code_buffer)
-            {
-                strcat(gen, code_buffer);
-            }
-            else
-            {
-                strcat(gen, expr_str);
-            }
+            strcat(gen, expr);
             strcat(gen, "), ");
-            if (code_buffer)
-            {
-                strcat(gen, code_buffer);
-            }
-            else
-            {
-                strcat(gen, expr_str);
-            }
+            strcat(gen, expr);
             strcat(gen, "); strcat(_b, _t); ");
-        }
-
-        if (code_buffer)
-        {
-            free(code_buffer);
         }
 
         cur = p + 1;
@@ -3271,40 +3260,9 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
 
                 if (lexer_peek(l).type == TOK_OP && is_token(lexer_peek(l), "="))
                 {
-                    lexer_next(l); // consume =
-
-                    const char *start_ptr = lexer_peek(l).start;
-                    int nesting = 0;
-                    while (1)
-                    {
-                        Token t = lexer_peek(l);
-                        if (t.type == TOK_EOF)
-                        {
-                            zpanic_at(t, "Unexpected EOF in default arg");
-                        }
-
-                        if (nesting == 0 && (t.type == TOK_COMMA || t.type == TOK_RPAREN))
-                        {
-                            break;
-                        }
-
-                        if (t.type == TOK_LPAREN || t.type == TOK_LBRACE || t.type == TOK_LBRACKET)
-                        {
-                            nesting++;
-                        }
-                        if (t.type == TOK_RPAREN || t.type == TOK_RBRACE || t.type == TOK_RBRACKET)
-                        {
-                            nesting--;
-                        }
-
-                        lexer_next(l);
-                    }
-                    const char *end_ptr = lexer_peek(l).start;
-                    size_t len = end_ptr - start_ptr;
-                    char *def_val = xmalloc(len + 1);
-                    strncpy(def_val, start_ptr, len);
-                    def_val[len] = 0;
-                    defaults[count - 1] = def_val;
+                    lexer_next(l);
+                    Token val = lexer_next(l);
+                    defaults[count - 1] = token_strdup(val);
                 }
             }
             if (lexer_peek(l).type == TOK_COMMA)

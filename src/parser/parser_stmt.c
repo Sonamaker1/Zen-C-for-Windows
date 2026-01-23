@@ -11,6 +11,7 @@
 #include "../zen/zen_facts.h"
 #include "zprep_plugin.h"
 #include "../codegen/codegen.h"
+#include "../utils/path_utils.h"
 
 char *curr_func_ret = NULL;
 char *run_comptime_block(ParserContext *ctx, Lexer *l);
@@ -1376,20 +1377,19 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
         }
 
         expr = final_expr;
+        char *allocated_expr = NULL;
         clean_expr = final_expr;
 
-        // Parse expression fully
-        Lexer lex;
-        lexer_init(&lex, clean_expr);
-        ASTNode *expr_node = parse_expression(ctx, &lex);
+        int skip_rewrite = 0;
 
-        char *rw_expr = NULL;
-        int used_codegen = 0;
-
-        if (expr_node)
+        // Check if struct and has to_string (Robust Logic)
         {
-            // Check for to_string conversion on struct types
-            if (expr_node->type_info)
+            Lexer lex;
+            lexer_init(&lex, clean_expr);
+            // Parse using temporary lexer to check type
+            ASTNode *expr_node = parse_expression(ctx, &lex);
+
+            if (expr_node && expr_node->type_info)
             {
                 Type *t = expr_node->type_info;
                 char *struct_name = NULL;
@@ -1411,52 +1411,47 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                     sprintf(mangled, "%s__to_string", struct_name);
                     if (find_func(ctx, mangled))
                     {
-                        char *inner_c = NULL;
-                        size_t len = 0;
-                        FILE *ms = open_memstream(&inner_c, &len);
-                        if (ms)
+                        char *inner_wrapped = xmalloc(strlen(clean_expr) + 5);
+                        sprintf(inner_wrapped, "#{%s}", clean_expr);
+                        char *inner_c = rewrite_expr_methods(ctx, inner_wrapped);
+                        free(inner_wrapped);
+
+                        // Now wrap in to_string call using C99 compound literal for safety
+                        char *new_expr = xmalloc(strlen(inner_c) + strlen(mangled) + 64);
+                        if (is_ptr)
                         {
-                            codegen_expression(ctx, expr_node, ms);
-                            fclose(ms);
+                            sprintf(new_expr, "%s(%s)", mangled, inner_c);
+                        }
+                        else
+                        {
+                            sprintf(new_expr, "%s(({ %s _z_tmp = (%s); &_z_tmp; }))", mangled,
+                                    struct_name, inner_c);
                         }
 
-                        if (inner_c)
+                        if (expr != s)
                         {
-                            char *new_expr = xmalloc(strlen(inner_c) + strlen(mangled) + 64);
-                            if (is_ptr)
-                            {
-                                sprintf(new_expr, "%s(%s)", mangled, inner_c);
-                            }
-                            else
-                            {
-                                sprintf(new_expr, "%s(({ %s _z_tmp = (%s); &_z_tmp; }))", mangled,
-                                        struct_name, inner_c);
-                            }
-                            rw_expr = new_expr;
-                            free(inner_c);
+                            free(expr); // Free if explicitly allocated
                         }
+                        expr = new_expr;
+                        skip_rewrite = 1; // Don't rewrite again on the C99 syntax
                     }
-                }
-            }
-
-            if (!rw_expr)
-            {
-                char *buf = NULL;
-                size_t len = 0;
-                FILE *ms = open_memstream(&buf, &len);
-                if (ms)
-                {
-                    codegen_expression(ctx, expr_node, ms);
-                    fclose(ms);
-                    rw_expr = buf;
-                    used_codegen = 1;
                 }
             }
         }
 
-        if (!rw_expr)
+        // Rewrite the expression to handle pointer access (header_ptr.magic ->
+        // header_ptr->magic)
+        char *rw_expr;
+        if (skip_rewrite)
         {
-            rw_expr = xstrdup(expr); // Fallback
+            rw_expr = xstrdup(expr);
+        }
+        else
+        {
+            char *wrapped_expr = xmalloc(strlen(expr) + 5);
+            sprintf(wrapped_expr, "#{%s}", expr);
+            rw_expr = rewrite_expr_methods(ctx, wrapped_expr);
+            free(wrapped_expr);
         }
 
         if (fmt)
@@ -1472,10 +1467,11 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
         }
         else
         {
+            // Auto-detect format based on type if possible
             const char *format_spec = NULL;
-            Type *t = expr_node ? expr_node->type_info : NULL;
-            char *inferred_type = t ? type_to_string(t) : find_symbol_type(ctx, clean_expr);
+            char *inferred_type = find_symbol_type(ctx, clean_expr); // Simple variable lookup
 
+            // Basic Type Mappings
             if (inferred_type)
             {
                 if (strcmp(inferred_type, "int") == 0 || strcmp(inferred_type, "i32") == 0 ||
@@ -1511,10 +1507,6 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                 else if (strstr(inferred_type, "*"))
                 {
                     format_spec = "%p"; // Pointer
-                }
-                if (t)
-                {
-                    free(inferred_type);
                 }
             }
 
@@ -1558,13 +1550,10 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
             }
         }
 
-        if (rw_expr && used_codegen)
+        free(rw_expr); // Don't forget to free!
+        if (allocated_expr)
         {
-            free(rw_expr);
-        }
-        else if (rw_expr && !used_codegen)
-        {
-            free(rw_expr);
+            free(allocated_expr); // Don't forget to free the auto-generated call!
         }
 
         cur = p + 1;
@@ -2763,9 +2752,8 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
     }
 
     // Canonicalize path to avoid duplicates (for example: "./std/io.zc" vs "std/io.zc")
-    char *real_fn = realpath(fn, NULL);
-    if (real_fn)
-    {
+    char *real_fn = zc_realpath_alloc(fn);
+    if (real_fn) {
         free(fn);
         fn = real_fn;
     }

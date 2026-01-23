@@ -1,0 +1,617 @@
+diff --git a/.gitignore b/.gitignore
+index 4019c72..f326764 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -17,4 +17,6 @@ compile_commands.json
+ vgcore.*
+ tests/**/*.o
+ plugins/*.so
+-.cache
+\ No newline at end of file
++.cache
++.zig-cache
++zig-out
+\ No newline at end of file
+diff --git a/src/main.c b/src/main.c
+index aff7c32..be19f25 100644
+--- a/src/main.c
++++ b/src/main.c
+@@ -7,7 +7,14 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++
++#if defined(_WIN32)
++#include <stdarg.h>
++#endif
++
++#if !defined(_WIN32)
+ #include <unistd.h>
++#endif
+ 
+ // Forward decl for LSP
+ int lsp_main(int argc, char **argv);
+@@ -41,7 +48,7 @@ void print_usage()
+     printf("  -o <file>       Output executable name\n");
+     printf("  --emit-c        Keep generated C file (out.c)\n");
+     printf("  --freestanding  Freestanding mode (no stdlib)\n");
+-    printf("  --cc <compiler> C compiler to use (gcc, clang, tcc, zig)\n");
++    printf("  --cc <compiler> C compiler to use (gcc, clang, tcc, zig, zig++)\n");
+     printf("  -O<level>       Optimization level\n");
+     printf("  -g              Debug info\n");
+     printf("  -v, --verbose   Verbose output\n");
+@@ -49,19 +56,97 @@ void print_usage()
+     printf("  -c              Compile only (produce .o)\n");
+     printf("  --cpp           Use C++ mode.\n");
+     printf("  --cuda          Use CUDA mode (requires nvcc).\n");
++#if defined(_WIN32)
++    printf("  --msvc              (Windows + --cpp) Use MSVC ABI/headers/libs with zig c++\n");
++    printf("  --msvc-root <p>     Override MSVC root (…\\VC\\Tools\\MSVC\\<ver>)\n");
++    printf("  --win-kits-root <p> Override Windows Kits root (…\\Windows Kits\\10)\n");
++    printf("  --win-sdk-ver <v>   Override Windows SDK version (eg 10.0.26100.0)\n");
++#endif
++}
++
++#if defined(_WIN32)
++static void appendf(char *dst, size_t cap, const char *fmt, ...)
++{
++    size_t len = strlen(dst);
++    if (len >= cap)
++        return;
++
++    va_list ap;
++    va_start(ap, fmt);
++    vsnprintf(dst + len, cap - len, fmt, ap);
++    va_end(ap);
+ }
+ 
++static void zc_add_msvc_toolchain_flags(
++    char *cflags, size_t cflags_cap,
++    char *linkflags, size_t linkflags_cap,
++    const char *msvc_root,
++    const char *win_kits_root,
++    const char *win_sdk_ver)
++{
++    // MSVC / Windows SDK computed paths (x64)
++    char msvc_inc[512];
++    char msvc_lib[512];
++    char sdk_inc_um[512];
++    char sdk_inc_shared[512];
++    char sdk_inc_ucrt[512];
++    char sdk_inc_winrt[512];
++    char sdk_lib_um[512];
++    char sdk_lib_ucrt[512];
++
++    snprintf(msvc_inc, sizeof(msvc_inc), "%s\\include", msvc_root);
++    snprintf(msvc_lib, sizeof(msvc_lib), "%s\\lib\\x64", msvc_root);
++
++    snprintf(sdk_inc_um, sizeof(sdk_inc_um), "%s\\Include\\%s\\um", win_kits_root, win_sdk_ver);
++    snprintf(sdk_inc_shared, sizeof(sdk_inc_shared), "%s\\Include\\%s\\shared", win_kits_root, win_sdk_ver);
++    snprintf(sdk_inc_ucrt, sizeof(sdk_inc_ucrt), "%s\\Include\\%s\\ucrt", win_kits_root, win_sdk_ver);
++    snprintf(sdk_inc_winrt, sizeof(sdk_inc_winrt), "%s\\Include\\%s\\winrt", win_kits_root, win_sdk_ver);
++
++    snprintf(sdk_lib_um, sizeof(sdk_lib_um), "%s\\Lib\\%s\\um\\x64", win_kits_root, win_sdk_ver);
++    snprintf(sdk_lib_ucrt, sizeof(sdk_lib_ucrt), "%s\\Lib\\%s\\ucrt\\x64", win_kits_root, win_sdk_ver);
++
++    // ---- Compiler flags ----
++    appendf(cflags, cflags_cap, " -target x86_64-windows-msvc");
++    appendf(cflags, cflags_cap, " -std=c++20");
++    appendf(cflags, cflags_cap, " -nostdinc++");
++
++    appendf(cflags, cflags_cap, " -isystem \"%s\"", msvc_inc);
++    appendf(cflags, cflags_cap, " -isystem \"%s\"", sdk_inc_um);
++    appendf(cflags, cflags_cap, " -isystem \"%s\"", sdk_inc_shared);
++    appendf(cflags, cflags_cap, " -isystem \"%s\"", sdk_inc_ucrt);
++    appendf(cflags, cflags_cap, " -isystem \"%s\"", sdk_inc_winrt);
++
++    // ---- Linker flags ----
++    appendf(linkflags, linkflags_cap, " -L\"%s\"", msvc_lib);
++    appendf(linkflags, linkflags_cap, " -L\"%s\"", sdk_lib_um);
++    appendf(linkflags, linkflags_cap, " -L\"%s\"", sdk_lib_ucrt);
++
++    // CRT / runtime
++    appendf(linkflags, linkflags_cap, " -lvcruntime -lucrt -lmsvcrt -lmsvcprt -llegacy_stdio_definitions");
++
++    // Core Win32 libs
++    appendf(linkflags, linkflags_cap, " -lkernel32 -luser32 -ladvapi32 -lntdll");
++}
++#endif
++
+ int main(int argc, char **argv)
+ {
+     memset(&g_config, 0, sizeof(g_config));
+ 
+-    
+-    #if defined(_WIN32)
+-        strcpy(g_config.cc, "zig cc");
+-    #else
+-        strcpy(g_config.cc, "gcc");
+-    #endif
+-    
++#if defined(_WIN32)
++    strcpy(g_config.cc, "zig cc");
++#else
++    strcpy(g_config.cc, "gcc");
++#endif
++
++#if defined(_WIN32)
++    int use_msvc_toolchain = 0;
++
++    // Defaults (override via flags)
++    const char *msvc_root = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207";
++    const char *win_kits_root = "C:\\Program Files (x86)\\Windows Kits\\10";
++    const char *win_sdk_ver = "10.0.26100.0";
++#endif
+ 
+     if (argc < 2)
+     {
+@@ -152,11 +237,11 @@ int main(int argc, char **argv)
+         }
+         else if (strcmp(arg, "--cpp") == 0)
+         {
+-            #if defined(_WIN32)
+-                strcpy(g_config.cc, "zig c++");
+-            #else
+-                strcpy(g_config.cc, "g++");
+-            #endif
++#if defined(_WIN32)
++            strcpy(g_config.cc, "zig c++");
++#else
++            strcpy(g_config.cc, "g++");
++#endif
+             g_config.use_cpp = 1;
+         }
+         else if (strcmp(arg, "--cuda") == 0)
+@@ -206,6 +291,24 @@ int main(int argc, char **argv)
+         {
+             strcat(g_config.gcc_flags, " -g");
+         }
++#if defined(_WIN32)
++        else if (strcmp(arg, "--msvc") == 0)
++        {
++            use_msvc_toolchain = 1;
++        }
++        else if (strcmp(arg, "--msvc-root") == 0 && i + 1 < argc)
++        {
++            msvc_root = argv[++i];
++        }
++        else if (strcmp(arg, "--win-kits-root") == 0 && i + 1 < argc)
++        {
++            win_kits_root = argv[++i];
++        }
++        else if (strcmp(arg, "--win-sdk-ver") == 0 && i + 1 < argc)
++        {
++            win_sdk_ver = argv[++i];
++        }
++#endif
+         else if (arg[0] == '-')
+         {
+             // Unknown flag or C flag
+@@ -333,40 +436,48 @@ int main(int argc, char **argv)
+         return 0;
+     }
+ 
++#if defined(_WIN32)
++    // Apply MSVC toolchain flags if requested and we're in C++ mode.
++    // Intended for: zig c++ + prebuilt MSVC-ABI libraries (eg Panda3D SDK).
++    if (use_msvc_toolchain && g_config.use_cpp)
++    {
++        zc_add_msvc_toolchain_flags(
++            g_config.gcc_flags, sizeof(g_config.gcc_flags),
++            g_link_flags, sizeof(g_link_flags),
++            msvc_root, win_kits_root, win_sdk_ver);
++    }
++#endif
++
+     // Compile C
+     char cmd[8192];
+-    #if defined(_WIN32)
++#if defined(_WIN32)
+     const char *outfile = g_config.output_file ? g_config.output_file : "a.exe";
+-    #else
++#else
+     const char *outfile = g_config.output_file ? g_config.output_file : "a.out";
+-    #endif
+-
+-    #if defined(_WIN32)
+-        // Windows: no -lm, no -lpthread
+-        snprintf(cmd, sizeof(cmd),
+-            "%s %s %s %s -o %s %s -I./src %s",
+-            g_config.cc,
+-            g_config.gcc_flags,
+-            g_cflags,
+-            g_config.is_freestanding ? "-ffreestanding" : "",
+-            outfile,
+-            temp_source_file,
+-            g_link_flags
+-        );
+-    #else
+-        snprintf(cmd, sizeof(cmd),
+-            "%s %s %s %s -o %s %s -lm %s -I./src %s",
+-            g_config.cc,
+-            g_config.gcc_flags,
+-            g_cflags,
+-            g_config.is_freestanding ? "-ffreestanding" : "",
+-            outfile,
+-            temp_source_file,
+-            g_parser_ctx->has_async ? "-lpthread" : "",
+-            g_link_flags
+-        );
+-    #endif
+-
++#endif
++
++#if defined(_WIN32)
++    snprintf(cmd, sizeof(cmd),
++             "%s %s %s %s -o \"%s\" \"%s\" -I\"./src\" %s",
++             g_config.cc,
++             g_config.gcc_flags,
++             g_cflags,
++             g_config.is_freestanding ? "-ffreestanding" : "",
++             outfile,
++             temp_source_file,
++             g_link_flags);
++#else
++    snprintf(cmd, sizeof(cmd),
++             "%s %s %s %s -o \"%s\" \"%s\" -lm %s -I\"./src\" %s",
++             g_config.cc,
++             g_config.gcc_flags,
++             g_cflags,
++             g_config.is_freestanding ? "-ffreestanding" : "",
++             outfile,
++             temp_source_file,
++             g_parser_ctx->has_async ? "-lpthread" : "",
++             g_link_flags);
++#endif
+ 
+     if (g_config.verbose)
+     {
+@@ -408,14 +519,13 @@ int main(int argc, char **argv)
+         zptr_plugin_mgr_cleanup();
+         zen_trigger_global();
+ 
+-    #if defined(WIFEXITED) && defined(WEXITSTATUS)
++#if defined(WIFEXITED) && defined(WEXITSTATUS)
+         return WIFEXITED(ret) ? WEXITSTATUS(ret) : ret;
+-    #else
++#else
+         return ret;
+-    #endif
++#endif
+     }
+ 
+-
+     zptr_plugin_mgr_cleanup();
+     zen_trigger_global();
+     return 0;
+diff --git a/src/parser/parser_stmt.c b/src/parser/parser_stmt.c
+index dfc99db..a6df5cd 100644
+--- a/src/parser/parser_stmt.c
++++ b/src/parser/parser_stmt.c
+@@ -11,6 +11,7 @@
+ #include "../zen/zen_facts.h"
+ #include "zprep_plugin.h"
+ #include "../codegen/codegen.h"
++#include "../utils/path_utils.h"
+ 
+ char *curr_func_ret = NULL;
+ char *run_comptime_block(ParserContext *ctx, Lexer *l);
+@@ -1376,20 +1377,19 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
+         }
+ 
+         expr = final_expr;
++        char *allocated_expr = NULL;
+         clean_expr = final_expr;
+ 
+-        // Parse expression fully
+-        Lexer lex;
+-        lexer_init(&lex, clean_expr);
+-        ASTNode *expr_node = parse_expression(ctx, &lex);
++        int skip_rewrite = 0;
+ 
+-        char *rw_expr = NULL;
+-        int used_codegen = 0;
+-
+-        if (expr_node)
++        // Check if struct and has to_string (Robust Logic)
+         {
+-            // Check for to_string conversion on struct types
+-            if (expr_node->type_info)
++            Lexer lex;
++            lexer_init(&lex, clean_expr);
++            // Parse using temporary lexer to check type
++            ASTNode *expr_node = parse_expression(ctx, &lex);
++
++            if (expr_node && expr_node->type_info)
+             {
+                 Type *t = expr_node->type_info;
+                 char *struct_name = NULL;
+@@ -1411,52 +1411,47 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
+                     sprintf(mangled, "%s__to_string", struct_name);
+                     if (find_func(ctx, mangled))
+                     {
+-                        char *inner_c = NULL;
+-                        size_t len = 0;
+-                        FILE *ms = open_memstream(&inner_c, &len);
+-                        if (ms)
++                        char *inner_wrapped = xmalloc(strlen(clean_expr) + 5);
++                        sprintf(inner_wrapped, "#{%s}", clean_expr);
++                        char *inner_c = rewrite_expr_methods(ctx, inner_wrapped);
++                        free(inner_wrapped);
++
++                        // Now wrap in to_string call using C99 compound literal for safety
++                        char *new_expr = xmalloc(strlen(inner_c) + strlen(mangled) + 64);
++                        if (is_ptr)
++                        {
++                            sprintf(new_expr, "%s(%s)", mangled, inner_c);
++                        }
++                        else
+                         {
+-                            codegen_expression(ctx, expr_node, ms);
+-                            fclose(ms);
++                            sprintf(new_expr, "%s(({ %s _z_tmp = (%s); &_z_tmp; }))", mangled,
++                                    struct_name, inner_c);
+                         }
+ 
+-                        if (inner_c)
++                        if (expr != s)
+                         {
+-                            char *new_expr = xmalloc(strlen(inner_c) + strlen(mangled) + 64);
+-                            if (is_ptr)
+-                            {
+-                                sprintf(new_expr, "%s(%s)", mangled, inner_c);
+-                            }
+-                            else
+-                            {
+-                                sprintf(new_expr, "%s(({ %s _z_tmp = (%s); &_z_tmp; }))", mangled,
+-                                        struct_name, inner_c);
+-                            }
+-                            rw_expr = new_expr;
+-                            free(inner_c);
++                            free(expr); // Free if explicitly allocated
+                         }
++                        expr = new_expr;
++                        skip_rewrite = 1; // Don't rewrite again on the C99 syntax
+                     }
+                 }
+             }
+-
+-            if (!rw_expr)
+-            {
+-                char *buf = NULL;
+-                size_t len = 0;
+-                FILE *ms = open_memstream(&buf, &len);
+-                if (ms)
+-                {
+-                    codegen_expression(ctx, expr_node, ms);
+-                    fclose(ms);
+-                    rw_expr = buf;
+-                    used_codegen = 1;
+-                }
+-            }
+         }
+ 
+-        if (!rw_expr)
++        // Rewrite the expression to handle pointer access (header_ptr.magic ->
++        // header_ptr->magic)
++        char *rw_expr;
++        if (skip_rewrite)
++        {
++            rw_expr = xstrdup(expr);
++        }
++        else
+         {
+-            rw_expr = xstrdup(expr); // Fallback
++            char *wrapped_expr = xmalloc(strlen(expr) + 5);
++            sprintf(wrapped_expr, "#{%s}", expr);
++            rw_expr = rewrite_expr_methods(ctx, wrapped_expr);
++            free(wrapped_expr);
+         }
+ 
+         if (fmt)
+@@ -1472,10 +1467,11 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
+         }
+         else
+         {
++            // Auto-detect format based on type if possible
+             const char *format_spec = NULL;
+-            Type *t = expr_node ? expr_node->type_info : NULL;
+-            char *inferred_type = t ? type_to_string(t) : find_symbol_type(ctx, clean_expr);
++            char *inferred_type = find_symbol_type(ctx, clean_expr); // Simple variable lookup
+ 
++            // Basic Type Mappings
+             if (inferred_type)
+             {
+                 if (strcmp(inferred_type, "int") == 0 || strcmp(inferred_type, "i32") == 0 ||
+@@ -1512,10 +1508,6 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
+                 {
+                     format_spec = "%p"; // Pointer
+                 }
+-                if (t)
+-                {
+-                    free(inferred_type);
+-                }
+             }
+ 
+             // Check for Literals if variable lookup failed
+@@ -1558,13 +1550,10 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
+             }
+         }
+ 
+-        if (rw_expr && used_codegen)
++        free(rw_expr); // Don't forget to free!
++        if (allocated_expr)
+         {
+-            free(rw_expr);
+-        }
+-        else if (rw_expr && !used_codegen)
+-        {
+-            free(rw_expr);
++            free(allocated_expr); // Don't forget to free the auto-generated call!
+         }
+ 
+         cur = p + 1;
+@@ -2763,9 +2752,8 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
+     }
+ 
+     // Canonicalize path to avoid duplicates (for example: "./std/io.zc" vs "std/io.zc")
+-    char *real_fn = realpath(fn, NULL);
+-    if (real_fn)
+-    {
++    char *real_fn = zc_realpath_alloc(fn);
++    if (real_fn) {
+         free(fn);
+         fn = real_fn;
+     }
+diff --git a/src/parser/parser_utils.c b/src/parser/parser_utils.c
+index 97e6e78..d9fc119 100644
+--- a/src/parser/parser_utils.c
++++ b/src/parser/parser_utils.c
+@@ -2047,7 +2047,7 @@ char *process_fstring(ParserContext *ctx, const char *content, char ***used_syms
+         }
+ 
+         *p = 0;
+-        char *expr_str = brace + 1;
++        char *expr = brace + 1;
+         char *fmt = NULL;
+         if (colon)
+         {
+@@ -2055,19 +2055,34 @@ char *process_fstring(ParserContext *ctx, const char *content, char ***used_syms
+             fmt = colon + 1;
+         }
+ 
+-        // Parse expression fully to handle default arguments etc.
+-        Lexer expr_lex;
+-        lexer_init(&expr_lex, expr_str);
+-        ASTNode *expr_node = parse_expression(ctx, &expr_lex);
+-
+-        // Codegen expression to temporary buffer
+-        char *code_buffer = NULL;
+-        size_t code_len = 0;
+-        FILE *mem_stream = open_memstream(&code_buffer, &code_len);
+-        if (mem_stream)
++        // Analyze usage in expression
+         {
+-            codegen_expression(ctx, expr_node, mem_stream);
+-            fclose(mem_stream);
++            Lexer lex;
++            lexer_init(&lex, expr);
++            Token t;
++            while ((t = lexer_next(&lex)).type != TOK_EOF)
++            {
++                if (t.type == TOK_IDENT)
++                {
++                    char *name = token_strdup(t);
++                    Symbol *sym = find_symbol_entry(ctx, name);
++                    if (sym)
++                    {
++                        sym->is_used = 1;
++                    }
++
++                    if (used_syms && count)
++                    {
++                        *used_syms = xrealloc(*used_syms, sizeof(char *) * (*count + 1));
++                        (*used_syms)[*count] = name;
++                        (*count)++;
++                    }
++                    else
++                    {
++                        free(name);
++                    }
++                }
++            }
+         }
+ 
+         if (fmt)
+@@ -2075,44 +2090,18 @@ char *process_fstring(ParserContext *ctx, const char *content, char ***used_syms
+             strcat(gen, "sprintf(_t, \"%");
+             strcat(gen, fmt);
+             strcat(gen, "\", ");
+-            if (code_buffer)
+-            {
+-                strcat(gen, code_buffer);
+-            }
+-            else
+-            {
+-                strcat(gen, expr_str); // Fallback
+-            }
++            strcat(gen, expr);
+             strcat(gen, "); strcat(_b, _t); ");
+         }
+         else
+         {
+             strcat(gen, "sprintf(_t, _z_str(");
+-            if (code_buffer)
+-            {
+-                strcat(gen, code_buffer);
+-            }
+-            else
+-            {
+-                strcat(gen, expr_str);
+-            }
++            strcat(gen, expr);
+             strcat(gen, "), ");
+-            if (code_buffer)
+-            {
+-                strcat(gen, code_buffer);
+-            }
+-            else
+-            {
+-                strcat(gen, expr_str);
+-            }
++            strcat(gen, expr);
+             strcat(gen, "); strcat(_b, _t); ");
+         }
+ 
+-        if (code_buffer)
+-        {
+-            free(code_buffer);
+-        }
+-
+         cur = p + 1;
+     }
+ 
+@@ -3271,40 +3260,9 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
+ 
+                 if (lexer_peek(l).type == TOK_OP && is_token(lexer_peek(l), "="))
+                 {
+-                    lexer_next(l); // consume =
+-
+-                    const char *start_ptr = lexer_peek(l).start;
+-                    int nesting = 0;
+-                    while (1)
+-                    {
+-                        Token t = lexer_peek(l);
+-                        if (t.type == TOK_EOF)
+-                        {
+-                            zpanic_at(t, "Unexpected EOF in default arg");
+-                        }
+-
+-                        if (nesting == 0 && (t.type == TOK_COMMA || t.type == TOK_RPAREN))
+-                        {
+-                            break;
+-                        }
+-
+-                        if (t.type == TOK_LPAREN || t.type == TOK_LBRACE || t.type == TOK_LBRACKET)
+-                        {
+-                            nesting++;
+-                        }
+-                        if (t.type == TOK_RPAREN || t.type == TOK_RBRACE || t.type == TOK_RBRACKET)
+-                        {
+-                            nesting--;
+-                        }
+-
+-                        lexer_next(l);
+-                    }
+-                    const char *end_ptr = lexer_peek(l).start;
+-                    size_t len = end_ptr - start_ptr;
+-                    char *def_val = xmalloc(len + 1);
+-                    strncpy(def_val, start_ptr, len);
+-                    def_val[len] = 0;
+-                    defaults[count - 1] = def_val;
++                    lexer_next(l);
++                    Token val = lexer_next(l);
++                    defaults[count - 1] = token_strdup(val);
+                 }
+             }
+             if (lexer_peek(l).type == TOK_COMMA)
