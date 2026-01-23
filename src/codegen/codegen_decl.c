@@ -53,7 +53,31 @@ void emit_preamble(ParserContext *ctx, FILE *out)
               "<stddef.h>\n#include <string.h>\n",
               out);
         fputs("#include <stdarg.h>\n#include <stdint.h>\n#include <stdbool.h>\n", out);
-        fputs("#include <unistd.h>\n#include <fcntl.h>\n", out); // POSIX functions
+        // REPL helpers: suppress/restore stdout.
+        fputs(
+        "#if defined(_WIN32)\n"
+        "#  include <io.h>\n"
+        "#  include <fcntl.h>\n"
+        "#  define Z_DUP   _dup\n"
+        "#  define Z_DUP2  _dup2\n"
+        "#  define Z_CLOSE _close\n"
+        "#  define Z_OPEN  _open\n"
+        "#  ifndef STDOUT_FILENO\n"
+        "#    define STDOUT_FILENO 1\n"
+        "#  endif\n"
+        "#  define Z_NULL_DEVICE \"NUL\"\n"
+        "#else\n"
+        "#  include <unistd.h>\n"
+        "#  include <fcntl.h>\n"
+        "#  define Z_DUP   dup\n"
+        "#  define Z_DUP2  dup2\n"
+        "#  define Z_CLOSE close\n"
+        "#  define Z_OPEN  open\n"
+        "#  define Z_NULL_DEVICE \"/dev/null\"\n"
+        "#endif\n",
+        out);
+
+        fputs("static int _z_orig_stdout = -1;\n", out);
 
         // C++ compatibility
         if (g_config.use_cpp)
@@ -174,19 +198,21 @@ void emit_preamble(ParserContext *ctx, FILE *out)
               out);
 
         // REPL helpers: suppress/restore stdout.
-        fputs("int _z_orig_stdout = -1;\n", out);
         fputs("void _z_suppress_stdout() {\n", out);
         fputs("    fflush(stdout);\n", out);
-        fputs("    if (_z_orig_stdout == -1) _z_orig_stdout = dup(STDOUT_FILENO);\n", out);
-        fputs("    int nullfd = open(\"/dev/null\", O_WRONLY);\n", out);
-        fputs("    dup2(nullfd, STDOUT_FILENO);\n", out);
-        fputs("    close(nullfd);\n", out);
+        fputs("    if (_z_orig_stdout == -1) _z_orig_stdout = Z_DUP(STDOUT_FILENO);\n", out);
+        fputs("    int nullfd = Z_OPEN(Z_NULL_DEVICE, O_WRONLY);\n", out);
+        fputs("    if (nullfd >= 0) {\n", out);
+        fputs("        Z_DUP2(nullfd, STDOUT_FILENO);\n", out);
+        fputs("        Z_CLOSE(nullfd);\n", out);
+        fputs("    }\n", out);
         fputs("}\n", out);
+
         fputs("void _z_restore_stdout() {\n", out);
         fputs("    fflush(stdout);\n", out);
         fputs("    if (_z_orig_stdout != -1) {\n", out);
-        fputs("        dup2(_z_orig_stdout, STDOUT_FILENO);\n", out);
-        fputs("        close(_z_orig_stdout);\n", out);
+        fputs("        Z_DUP2(_z_orig_stdout, STDOUT_FILENO);\n", out);
+        fputs("        Z_CLOSE(_z_orig_stdout);\n", out);
         fputs("        _z_orig_stdout = -1;\n", out);
         fputs("    }\n", out);
         fputs("}\n", out);
