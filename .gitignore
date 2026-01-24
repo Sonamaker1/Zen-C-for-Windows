@@ -18,3 +18,5 @@ vgcore.*
 tests/**/*.o
 plugins/*.so
 .cache
+.zig-cache/
+zig-out/
