@@ -1,6 +1,6 @@
 
-import "./core.zc"
-import "./option.zc"
+import "std/core.zc"
+import "std/option.zc"
 
 raw {
     extern size_t __zen_hash_seed;

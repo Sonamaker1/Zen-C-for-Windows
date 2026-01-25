@@ -1,8 +1,8 @@
 
-import "./core.zc"
-import "./string.zc"
-import "./option.zc"
-import "./vec.zc"
+import "std/core.zc"
+import "std/string.zc"
+import "std/option.zc"
+import "std/vec.zc"
 
 struct Path {
     str: String;

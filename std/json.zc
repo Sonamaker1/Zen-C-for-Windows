@@ -1,9 +1,9 @@
 
-import "./core.zc"
-import "./vec.zc"
-import "./map.zc"
-import "./string.zc"
-import "./result.zc"
+import "std/core.zc"
+import "std/vec.zc"
+import "std/map.zc"
+import "std/string.zc"
+import "std/result.zc"
 
 @derive(Eq)
 enum JsonType {
