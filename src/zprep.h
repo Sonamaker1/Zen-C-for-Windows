@@ -59,6 +59,7 @@ typedef enum
     TOK_TEST,
     TOK_ASSERT,
     TOK_SIZEOF,
+    TOK_DEF,
     TOK_DEFER,
     TOK_AUTOFREE,
     TOK_QUESTION,
@@ -178,6 +179,7 @@ typedef struct
     int emit_c;          // 1 if --emit-c (keep C file).
     int verbose;         // 1 if --verbose.
     int quiet;           // 1 if --quiet.
+    int no_zen;          // 1 if --no-zen (disable zen facts).
     int repl_mode;       // 1 if --repl (internal flag for REPL usage).
     int is_freestanding; // 1 if --freestanding.
     int mode_transpile;  // 1 if 'transpile' command.

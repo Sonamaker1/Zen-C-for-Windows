@@ -59,6 +59,8 @@ Type *type_new(TypeKind kind)
     t->args = NULL;
     t->arg_count = 0;
     t->is_const = 0;
+    t->is_explicit_struct = 0;
+    t->is_raw = 0;
     t->array_size = 0;
     return t;
 }
@@ -129,6 +131,11 @@ int type_eq(Type *a, Type *b)
         return 1;
     }
 
+    if (a->kind == TYPE_UNKNOWN || b->kind == TYPE_UNKNOWN)
+    {
+        return 1;
+    }
+
     // Lax integer matching (bool == int, char == i8, etc.).
     if (is_integer_type(a) && is_integer_type(b))
     {
@@ -169,7 +176,26 @@ int type_eq(Type *a, Type *b)
     return 1;
 }
 
+static char *type_to_string_impl(Type *t);
+
 char *type_to_string(Type *t)
+{
+    if (!t)
+    {
+        return xstrdup("void");
+    }
+    char *res = type_to_string_impl(t);
+    if (t->is_const)
+    {
+        char *final = xmalloc(strlen(res) + 7);
+        sprintf(final, "const %s", res);
+        free(res);
+        return final;
+    }
+    return res;
+}
+
+static char *type_to_string_impl(Type *t)
 {
     if (!t)
     {
@@ -259,6 +285,36 @@ char *type_to_string(Type *t)
     }
 
     case TYPE_FUNCTION:
+        if (t->is_raw)
+        {
+            // fn*(Args)->Ret
+            char *ret = type_to_string(t->inner);
+            char *res = xmalloc(strlen(ret) + 64);
+            sprintf(res, "fn*(");
+
+            for (int i = 0; i < t->arg_count; i++)
+            {
+                if (i > 0)
+                {
+                    char *tmp = xmalloc(strlen(res) + 3);
+                    sprintf(tmp, "%s, ", res);
+                    free(res);
+                    res = tmp;
+                }
+                char *arg = type_to_string(t->args[i]);
+                char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
+                sprintf(tmp, "%s%s", res, arg);
+                free(res);
+                res = tmp;
+                free(arg);
+            }
+            char *tmp = xmalloc(strlen(res) + strlen(ret) + 5); // ) -> Ret
+            sprintf(tmp, "%s) -> %s", res, ret);
+            free(res);
+            res = tmp;
+            free(ret);
+            return res;
+        }
         if (t->inner)
         {
             free(type_to_string(t->inner));
@@ -293,7 +349,26 @@ char *type_to_string(Type *t)
 // C-compatible type stringifier.
 // Strictly uses 'struct T' for explicit structs to support external types.
 // Does NOT mangle pointers to 'Ptr'.
+static char *type_to_c_string_impl(Type *t);
+
 char *type_to_c_string(Type *t)
+{
+    if (!t)
+    {
+        return xstrdup("void");
+    }
+    char *res = type_to_c_string_impl(t);
+    if (t->is_const)
+    {
+        char *final = xmalloc(strlen(res) + 7);
+        sprintf(final, "const %s", res);
+        free(res);
+        return final;
+    }
+    return res;
+}
+
+static char *type_to_c_string_impl(Type *t)
 {
     if (!t)
     {
@@ -367,6 +442,19 @@ char *type_to_c_string(Type *t)
     case TYPE_POINTER:
     {
         char *inner = type_to_c_string(t->inner);
+        char *ptr_token = strstr(inner, "(*");
+        if (ptr_token)
+        {
+            long prefix_len = ptr_token - inner + 2; // "void (*"
+            char *res = xmalloc(strlen(inner) + 2);
+            strncpy(res, inner, prefix_len);
+            res[prefix_len] = 0;
+            strcat(res, "*");
+            strcat(res, ptr_token + 2);
+            free(inner);
+            return res;
+        }
+
         if (t->is_restrict)
         {
             char *res = xmalloc(strlen(inner) + 16);
@@ -398,6 +486,35 @@ char *type_to_c_string(Type *t)
     }
 
     case TYPE_FUNCTION:
+        if (t->is_raw)
+        {
+            char *ret = type_to_c_string(t->inner);
+            char *res = xmalloc(strlen(ret) + 64); // heuristic start buffer
+            sprintf(res, "%s (*)(", ret);
+
+            for (int i = 0; i < t->arg_count; i++)
+            {
+                if (i > 0)
+                {
+                    char *tmp = xmalloc(strlen(res) + 3);
+                    sprintf(tmp, "%s, ", res);
+                    free(res);
+                    res = tmp;
+                }
+                char *arg = type_to_c_string(t->args[i]);
+                char *tmp = xmalloc(strlen(res) + strlen(arg) + 1);
+                sprintf(tmp, "%s%s", res, arg);
+                free(res);
+                res = tmp;
+                free(arg);
+            }
+            char *tmp = xmalloc(strlen(res) + 2);
+            sprintf(tmp, "%s)", res);
+            free(res);
+            res = tmp;
+            free(ret);
+            return res;
+        }
         if (t->inner)
         {
             free(type_to_c_string(t->inner));

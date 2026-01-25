@@ -53,6 +53,7 @@ void print_usage()
     printf("  -g              Debug info\n");
     printf("  -v, --verbose   Verbose output\n");
     printf("  -q, --quiet     Quiet output\n");
+    printf("  --no-zen        Disable Zen facts\n");
     printf("  -c              Compile only (produce .o)\n");
     printf("  --cpp           Use C++ mode.\n");
     printf("  --cuda          Use CUDA mode (requires nvcc).\n");
@@ -237,6 +238,10 @@ int main(int argc, char **argv)
         {
             g_config.quiet = 1;
         }
+        else if (strcmp(arg, "--no-zen") == 0)
+        {
+            g_config.no_zen = 1;
+        }
         else if (strcmp(arg, "--freestanding") == 0)
         {
             g_config.is_freestanding = 1;
@@ -384,6 +389,12 @@ int main(int argc, char **argv)
     if (!root)
     {
         // Parse failed
+        return 1;
+    }
+
+    if (!validate_types(&ctx))
+    {
+        // Type validation failed
         return 1;
     }
 

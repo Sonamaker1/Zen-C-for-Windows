@@ -267,6 +267,10 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
             s = ast_create(NODE_RAW_STMT);
             s->raw_stmt.content = content;
         }
+        else if (t.type == TOK_DEF)
+        {
+            s = parse_def(ctx, l);
+        }
         else if (t.type == TOK_IDENT)
         {
             // Inline function: inline fn name(...) { }
@@ -333,13 +337,18 @@ ASTNode *parse_program_nodes(ParserContext *ctx, Lexer *l)
             {
                 s = parse_import(ctx, l);
             }
-            else if (t.len == 3 && strncmp(t.start, "var", 3) == 0)
+            else if (t.len == 3 && strncmp(t.start, "let", 3) == 0)
             {
                 s = parse_var_decl(ctx, l);
             }
+            else if (t.len == 3 && strncmp(t.start, "var", 3) == 0)
+            {
+                zpanic_at(t, "'var' is deprecated. Use 'let' instead.");
+            }
             else if (t.len == 5 && strncmp(t.start, "const", 5) == 0)
             {
-                s = parse_const(ctx, l);
+                zpanic_at(t, "'const' for declarations is deprecated. Use 'def' for constants or "
+                             "'let x: const T' for read-only variables.");
             }
             else if (t.len == 6 && strncmp(t.start, "extern", 6) == 0)
             {
