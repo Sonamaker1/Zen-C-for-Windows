@@ -1,4 +1,5 @@
 
+@derive(Copy)
 struct Complex {
     re: float,
     im: float,
