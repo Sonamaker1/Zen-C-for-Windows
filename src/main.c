@@ -56,7 +56,14 @@ void print_usage()
 int main(int argc, char **argv)
 {
     memset(&g_config, 0, sizeof(g_config));
-    strcpy(g_config.cc, "gcc");
+    if (z_is_windows())
+    {
+        strcpy(g_config.cc, "gcc.exe");
+    }
+    else
+    {
+        strcpy(g_config.cc, "gcc");
+    }
 
     if (argc < 2)
     {
@@ -339,9 +346,24 @@ int main(int argc, char **argv)
     char cmd[8192];
     char *outfile = g_config.output_file ? g_config.output_file : "a.out";
 
-    snprintf(cmd, sizeof(cmd), "%s %s %s %s %s -o %s %s -lm %s -I./src %s", g_config.cc,
+    const char *thread_flag = g_parser_ctx->has_async ? "-lpthread" : "";
+    const char *math_flag = "-lm";
+
+    if (z_is_windows())
+    {
+        // Windows might use different flags or none for math/threads
+        math_flag = "";
+        if (g_parser_ctx->has_async)
+        {
+            thread_flag = "";
+        }
+    }
+
+    // If using cosmocc, it handles these usually, but keeping them is okay for Linux targets
+
+    snprintf(cmd, sizeof(cmd), "%s %s %s %s %s -o %s %s %s %s -I./src %s", g_config.cc,
              g_config.gcc_flags, g_cflags, g_config.is_freestanding ? "-ffreestanding" : "", "",
-             outfile, temp_source_file, g_parser_ctx->has_async ? "-lpthread" : "", g_link_flags);
+             outfile, temp_source_file, math_flag, thread_flag, g_link_flags);
 
     if (g_config.verbose)
     {
@@ -368,7 +390,14 @@ int main(int argc, char **argv)
     if (g_config.mode_run)
     {
         char run_cmd[2048];
-        sprintf(run_cmd, "./%s", outfile);
+        if (z_is_windows())
+        {
+            sprintf(run_cmd, "%s", outfile);
+        }
+        else
+        {
+            sprintf(run_cmd, "./%s", outfile);
+        }
         ret = system(run_cmd);
         remove(outfile);
         zptr_plugin_mgr_cleanup();

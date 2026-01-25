@@ -1463,7 +1463,7 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                 if (t.type == TOK_IDENT)
                 {
                     char *name = token_strdup(t);
-                    Symbol *sym = find_symbol_entry(ctx, name);
+                    ZenSymbol *sym = find_symbol_entry(ctx, name);
                     if (sym)
                     {
                         sym->is_used = 1;
@@ -1933,7 +1933,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         s = parse_var_decl(ctx, l);
         s->var_decl.is_autofree = 1;
         // Mark symbol as autofree to suppress unused variable warning
-        Symbol *sym = find_symbol_entry(ctx, s->var_decl.name);
+        ZenSymbol *sym = find_symbol_entry(ctx, s->var_decl.name);
         if (sym)
         {
             sym->is_autofree = 1;
@@ -2617,7 +2617,7 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l)
     // Check for unused variables in this block scope
     if (ctx->current_scope && !ctx->is_repl)
     {
-        Symbol *sym = ctx->current_scope->symbols;
+        ZenSymbol *sym = ctx->current_scope->symbols;
         while (sym)
         {
             // Skip special names and already warned
@@ -3179,8 +3179,19 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
 
     char cmd[4096];
     char bin[1024];
-    sprintf(bin, "%s.bin", filename);
-    sprintf(cmd, "gcc %s -o %s > /dev/null 2>&1", filename, bin);
+    if (z_is_windows())
+    {
+        sprintf(bin, "%s.exe", filename);
+    }
+    else
+    {
+        sprintf(bin, "%s.bin", filename);
+    }
+    sprintf(cmd, "%s %s -o %s", g_config.cc, filename, bin);
+    if (!g_config.verbose)
+    {
+        strcat(cmd, " > /dev/null 2>&1");
+    }
     int res = system(cmd);
     if (res != 0)
     {
@@ -3189,7 +3200,17 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
 
     char out_file[1024];
     sprintf(out_file, "%s.out", filename);
-    sprintf(cmd, "./%s > %s", bin, out_file);
+
+    // Platform-neutral execution
+    if (z_is_windows())
+    {
+        sprintf(cmd, "%s > %s", bin, out_file);
+    }
+    else
+    {
+        sprintf(cmd, "./%s > %s", bin, out_file);
+    }
+
     if (system(cmd) != 0)
     {
         zpanic_at(lexer_peek(l), "Comptime execution failed");
