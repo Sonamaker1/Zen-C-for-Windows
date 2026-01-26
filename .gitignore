@@ -18,5 +18,8 @@ vgcore.*
 tests/**/*.o
 plugins/*.so
 .cache
-.zig-cache/
-zig-out/
+out/
+# Doxygen documentation
+docs/html/
+docs/latex/
+*.db
