@@ -22,13 +22,16 @@ static void emit_freestanding_preamble(FILE *out)
           "uint64_t\n",
           out);
     fputs("#define F32 float\n#define F64 double\n", out);
-    fputs("#define _z_str(x) _Generic((x), _Bool: \"%d\", char: \"%c\", "
+    fputs("static inline const char* _z_bool_str(_Bool b) { return b ? \"true\" : \"false\"; }\n",
+          out);
+    fputs("#define _z_str(x) _Generic((x), _Bool: \"%s\", char: \"%c\", "
           "signed char: \"%c\", unsigned char: \"%u\", short: \"%d\", "
           "unsigned short: \"%u\", int: \"%d\", unsigned int: \"%u\", "
           "long: \"%ld\", unsigned long: \"%lu\", long long: \"%lld\", "
           "unsigned long long: \"%llu\", float: \"%f\", double: \"%f\", "
           "char*: \"%s\", void*: \"%p\")\n",
           out);
+    fputs("#define _z_arg(x) _Generic((x), _Bool: _z_bool_str(x), default: (x))\n", out);
     fputs("typedef struct { void *func; void *ctx; } z_closure_T;\n", out);
 
     fputs("__attribute__((weak)) void* z_malloc(usize sz) { return NULL; }\n", out);
@@ -62,7 +65,12 @@ void emit_preamble(ParserContext *ctx, FILE *out)
             fputs("#define ZC_AUTO auto\n", out);
             fputs("#define ZC_CAST(T, x) static_cast<T>(x)\n", out);
             // C++ _z_str via overloads
-            fputs("inline const char* _z_str(bool)               { return \"%d\"; }\n", out);
+            fputs("inline const char* _z_bool_str(bool b) { return b ? \"true\" : \"false\"; }\n",
+                  out);
+            fputs("inline const char* _z_str(bool)               { return \"%s\"; }\n", out);
+            fputs("inline const char* _z_arg(bool b)             { return _z_bool_str(b); }\n",
+                  out);
+            fputs("template<typename T> inline T _z_arg(T x)     { return x; }\n", out);
             fputs("inline const char* _z_str(char)               { return \"%c\"; }\n", out);
             fputs("inline const char* _z_str(int)                { return \"%d\"; }\n", out);
             fputs("inline const char* _z_str(unsigned int)       { return \"%u\"; }\n", out);
@@ -82,13 +90,17 @@ void emit_preamble(ParserContext *ctx, FILE *out)
             fputs("#define ZC_AUTO __auto_type\n", out);
             fputs("#define ZC_CAST(T, x) ((T)(x))\n", out);
             fputs("#ifdef __TINYC__\n#define __auto_type __typeof__\n#endif\n", out);
-            fputs("#define _z_str(x) _Generic((x), _Bool: \"%d\", char: \"%c\", "
+            fputs("static inline const char* _z_bool_str(_Bool b) { return b ? \"true\" : "
+                  "\"false\"; }\n",
+                  out);
+            fputs("#define _z_str(x) _Generic((x), _Bool: \"%s\", char: \"%c\", "
                   "signed char: \"%c\", unsigned char: \"%u\", short: \"%d\", "
                   "unsigned short: \"%u\", int: \"%d\", unsigned int: \"%u\", "
                   "long: \"%ld\", unsigned long: \"%lu\", long long: \"%lld\", "
                   "unsigned long long: \"%llu\", float: \"%f\", double: \"%f\", "
                   "char*: \"%s\", void*: \"%p\")\n",
                   out);
+            fputs("#define _z_arg(x) _Generic((x), _Bool: _z_bool_str(x), default: (x))\n", out);
         }
 
         fputs("typedef size_t usize;\ntypedef char* string;\n", out);
