@@ -1691,9 +1691,9 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                 sprintf(buf, "fprintf(%s, _z_str(", target);
                 strcat(gen, buf);
                 strcat(gen, rw_expr);
-                strcat(gen, "), _z_arg(");
+                strcat(gen, "), ");
                 strcat(gen, rw_expr);
-                strcat(gen, ")); ");
+                strcat(gen, "); ");
             }
         }
 

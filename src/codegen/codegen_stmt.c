@@ -70,9 +70,21 @@ static void emit_single_pattern_cond(const char *pat, int id, int is_ptr, FILE *
             fprintf(out, "strcmp(_m_%d, %s) == 0", id, pat);
         }
     }
+    else if (pat[0] == '\'')
+    {
+        // Char literal pattern
+        if (is_ptr)
+        {
+            fprintf(out, "*_m_%d == %s", id, pat);
+        }
+        else
+        {
+            fprintf(out, "_m_%d == %s", id, pat);
+        }
+    }
     else
     {
-        // Numeric, Char literal (removed duplicate branch), or simple pattern
+        // Numeric or simple pattern
         if (is_ptr)
         {
             fprintf(out, "*_m_%d == %s", id, pat);
@@ -1507,7 +1519,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
         emit_auto_type(ctx, node->repl_print.expr, node->token, out);
         fprintf(out, " _zval = (");
         codegen_expression(ctx, node->repl_print.expr, out);
-        fprintf(out, "); fprintf(stdout, _z_str(_zval), _z_arg(_zval)); fprintf(stdout, "
+        fprintf(out, "); fprintf(stdout, _z_str(_zval), _zval); fprintf(stdout, "
                      "\"\\n\"); }\n");
         break;
     }
