@@ -464,7 +464,12 @@ ASTNode *parse_defer(ParserContext *ctx, Lexer *l)
     else
     {
         s = ast_create(NODE_RAW_STMT);
-        s->raw_stmt.content = consume_and_rewrite(ctx, l);
+        char *raw_content = consume_and_rewrite(ctx, l);
+        // consume_and_rewrite strips the semicolon, so we must add it back for proper C generation
+        char *safe_content = xmalloc(strlen(raw_content) + 2);
+        sprintf(safe_content, "%s;", raw_content);
+        free(raw_content);
+        s->raw_stmt.content = safe_content;
     }
 
     ctx->in_defer_block = prev_in_defer;
@@ -1596,10 +1601,15 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
             Type *t = expr_node ? expr_node->type_info : NULL;
             char *inferred_type = t ? type_to_string(t) : find_symbol_type(ctx, clean_expr);
 
+            int is_bool = 0;
             if (inferred_type)
             {
-                if (strcmp(inferred_type, "int") == 0 || strcmp(inferred_type, "i32") == 0 ||
-                    strcmp(inferred_type, "bool") == 0)
+                if (strcmp(inferred_type, "bool") == 0)
+                {
+                    format_spec = "%s";
+                    is_bool = 1;
+                }
+                else if (strcmp(inferred_type, "int") == 0 || strcmp(inferred_type, "i32") == 0)
                 {
                     format_spec = "%d";
                 }
@@ -1662,7 +1672,16 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                 strcat(gen, buf);
                 strcat(gen, format_spec);
                 strcat(gen, "\", ");
-                strcat(gen, rw_expr);
+                if (is_bool)
+                {
+                    strcat(gen, "_z_bool_str(");
+                    strcat(gen, rw_expr);
+                    strcat(gen, ")");
+                }
+                else
+                {
+                    strcat(gen, rw_expr);
+                }
                 strcat(gen, "); ");
             }
             else
@@ -1672,9 +1691,9 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                 sprintf(buf, "fprintf(%s, _z_str(", target);
                 strcat(gen, buf);
                 strcat(gen, rw_expr);
-                strcat(gen, "), ");
+                strcat(gen, "), _z_arg(");
                 strcat(gen, rw_expr);
-                strcat(gen, "); ");
+                strcat(gen, ")); ");
             }
         }
 

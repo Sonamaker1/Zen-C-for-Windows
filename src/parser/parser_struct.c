@@ -142,6 +142,12 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     n_node->trait.methods = methods;
     n_node->trait.generic_params = generic_params;
     n_node->trait.generic_param_count = generic_count;
+
+    if (generic_count > 0)
+    {
+        ctx->known_generics_count -= generic_count;
+    }
+
     register_trait(name);
     return n_node;
 }
@@ -740,12 +746,14 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
                 // Named use -> Composition (Add field, don't flatten)
                 Token field_name = lexer_next(l);
                 lexer_next(l); // eat :
-                char *field_type_str = parse_type(ctx, l);
+                Type *ft = parse_type_formal(ctx, l);
+                char *field_type_str = type_to_string(ft);
                 expect(l, TOK_SEMICOLON, "Expected ;");
 
                 ASTNode *nf = ast_create(NODE_FIELD);
                 nf->field.name = token_strdup(field_name);
                 nf->field.type = field_type_str;
+                nf->type_info = ft;
 
                 if (!h)
                 {
@@ -792,6 +800,12 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
                     ASTNode *nf = ast_create(NODE_FIELD);
                     nf->field.name = xstrdup(f->field.name);
                     nf->field.type = xstrdup(f->field.type);
+                    // Copy type info? Ideally deep copy or ref
+                    // For now, we leave it NULL or shallow copy if needed, but mixins usually
+                    // aren't generic params themselves in the same way.
+                    // Let's shallow copy for safety if it exists.
+                    nf->type_info = f->type_info;
+
                     if (!h)
                     {
                         h = nf;
@@ -821,11 +835,13 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
         {
             Token f_name = lexer_next(l);
             expect(l, TOK_COLON, "Expected :");
-            char *f_type = parse_type(ctx, l);
+            Type *ft = parse_type_formal(ctx, l);
+            char *f_type = type_to_string(ft);
 
             ASTNode *f = ast_create(NODE_FIELD);
             f->field.name = token_strdup(f_name);
             f->field.type = f_type;
+            f->type_info = ft;
             f->field.bit_width = 0;
 
             // Optional bit width: name: type : 3
