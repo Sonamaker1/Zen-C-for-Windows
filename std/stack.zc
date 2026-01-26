@@ -1,5 +1,5 @@
-import "./option.zc"
-import "./mem.zc"
+import "std/option.zc"
+import "std/mem.zc"
 
 struct Stack<T> {
   data: T*;

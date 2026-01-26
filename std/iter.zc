@@ -1,4 +1,4 @@
-import "./option.zc"
+import "std/option.zc"
 
 trait Iterator<T> {
     fn next(self) -> Option<T>;

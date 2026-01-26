@@ -1,5 +1,5 @@
 
-import "./core.zc"
+import "std/core.zc"
 
 struct Option<T> {
     is_some: bool;

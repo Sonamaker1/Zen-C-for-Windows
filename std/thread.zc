@@ -3,8 +3,8 @@ include <pthread.h>
 include <time.h>
 include <unistd.h>
 
-import "./core.zc"
-import "./result.zc"
+import "std/core.zc"
+import "std/result.zc"
 
 raw {
     typedef void (*ZenThreadFunc)(void*);

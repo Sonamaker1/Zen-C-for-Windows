@@ -1,6 +1,6 @@
 
-import "./core.zc"
-import "./iter.zc"
+import "std/core.zc"
+import "std/iter.zc"
 
 struct Vec<T> {
     data: T*;

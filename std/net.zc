@@ -5,9 +5,9 @@ include <arpa/inet.h>
 include <unistd.h>
 include <errno.h>
 
-import "./core.zc"
-import "./result.zc"
-import "./string.zc"
+import "std/core.zc"
+import "std/result.zc"
+import "std/string.zc"
 
 def Z_AF_INET = 2;
 def Z_SOCK_STREAM = 1;

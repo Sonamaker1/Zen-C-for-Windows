@@ -1,4 +1,4 @@
-import "./core.zc"
+import "std/core.zc"
 
 struct Result<T> {
     is_ok: bool;
