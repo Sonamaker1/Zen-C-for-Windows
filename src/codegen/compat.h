@@ -14,10 +14,10 @@
 #define ZC_EXTERN_C_END }
 #else
 /* C mode */
-#define ZC_AUTO __auto_type                         ///< Auto type inference.
-#define ZC_CAST(T, x) ((T)(x))                      ///< Explicit cast.
-#define ZC_REINTERPRET(T, x) ((T)(x))               ///< Reinterpret cast.
-#define ZC_EXTERN_C                                 ///< Extern "C" (no-op in C).
+#define ZC_AUTO __auto_type           ///< Auto type inference.
+#define ZC_CAST(T, x) ((T)(x))        ///< Explicit cast.
+#define ZC_REINTERPRET(T, x) ((T)(x)) ///< Reinterpret cast.
+#define ZC_EXTERN_C                   ///< Extern "C" (no-op in C).
 #define ZC_EXTERN_C_BEGIN
 #define ZC_EXTERN_C_END
 #endif

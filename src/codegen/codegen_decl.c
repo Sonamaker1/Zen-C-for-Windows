@@ -34,13 +34,9 @@ static void emit_freestanding_preamble(FILE *out)
     fputs("#define _z_arg(x) _Generic((x), _Bool: _z_bool_str(x), default: (x))\n", out);
     fputs("typedef struct { void *func; void *ctx; } z_closure_T;\n", out);
 
-    fputs("__attribute__((weak)) void* z_malloc(usize sz) { return NULL; }\n", out);
-    fputs("__attribute__((weak)) void* z_realloc(void* ptr, usize sz) { return "
-          "NULL; }\n",
-          out);
-    fputs("__attribute__((weak)) void z_free(void* ptr) { }\n", out);
-    fputs("__attribute__((weak)) void z_print(const char* fmt, ...) { }\n", out);
-    fputs("__attribute__((weak)) void z_panic(const char* msg) { while(1); }\n", out);
+    // In true freestanding, explicit definitions of z_malloc/etc are removed.
+    // The user must implement them if they use features requiring them.
+    // Most primitives (integers, pointers) work without them.
 }
 
 void emit_preamble(ParserContext *ctx, FILE *out)
@@ -48,6 +44,7 @@ void emit_preamble(ParserContext *ctx, FILE *out)
     if (g_config.is_freestanding)
     {
         emit_freestanding_preamble(out);
+        return;
     }
     else
     {
@@ -383,10 +380,46 @@ void emit_struct_defs(ParserContext *ctx, ASTNode *node, FILE *out)
             {
                 fprintf(out, " __attribute__((packed))");
             }
-            else if (node->strct.align)
+            if (node->strct.align)
             {
                 fprintf(out, " __attribute__((aligned(%d)))", node->strct.align);
             }
+            if (node->strct.is_export)
+            {
+                fprintf(out, " __attribute__((visibility(\"default\")))");
+            }
+
+            if (node->strct.attributes)
+            {
+                fprintf(out, " __attribute__((");
+                Attribute *custom = node->strct.attributes;
+                int first = 1;
+                while (custom)
+                {
+                    if (!first)
+                    {
+                        fprintf(out, ", ");
+                    }
+                    fprintf(out, "%s", custom->name);
+                    if (custom->arg_count > 0)
+                    {
+                        fprintf(out, "(");
+                        for (int i = 0; i < custom->arg_count; i++)
+                        {
+                            if (i > 0)
+                            {
+                                fprintf(out, ", ");
+                            }
+                            fprintf(out, "%s", custom->args[i]);
+                        }
+                        fprintf(out, ")");
+                    }
+                    first = 0;
+                    custom = custom->next;
+                }
+                fprintf(out, "))");
+            }
+
             fprintf(out, ";\n\n");
         }
         else if (node->type == NODE_ENUM)
@@ -1034,53 +1067,52 @@ void print_type_defs(ParserContext *ctx, FILE *out, ASTNode *nodes)
     if (!g_config.is_freestanding)
     {
         fprintf(out, "typedef char* string;\n");
-    }
 
-    fprintf(out, "typedef struct { void **data; int len; int cap; } Vec;\n");
-    fprintf(out, "#define Vec_new() (Vec){.data=0, .len=0, .cap=0}\n");
+        fprintf(out, "typedef struct { void **data; int len; int cap; } Vec;\n");
+        fprintf(out, "#define Vec_new() (Vec){.data=0, .len=0, .cap=0}\n");
 
-    if (g_config.use_cpp)
-    {
-        fprintf(out, "void _z_vec_push(Vec *v, void *item) { if(v->len >= v->cap) { "
-                     "v->cap = v->cap?v->cap*2:8; "
-                     "v->data = static_cast<void**>(realloc(v->data, v->cap * sizeof(void*))); } "
-                     "v->data[v->len++] = item; }\n");
-        fprintf(out, "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
-                     "count > 8 ? "
-                     "count : 8; v.data = static_cast<void**>(malloc(v.cap * sizeof(void*))); "
-                     "v.len = 0; va_list "
-                     "args; "
-                     "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
-                     "va_arg(args, void*); } va_end(args); return v; }\n");
-    }
-    else
-    {
-        fprintf(out, "void _z_vec_push(Vec *v, void *item) { if(v->len >= v->cap) { "
-                     "v->cap = v->cap?v->cap*2:8; "
-                     "v->data = z_realloc(v->data, v->cap * sizeof(void*)); } "
-                     "v->data[v->len++] = item; }\n");
-        fprintf(out, "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
-                     "count > 8 ? "
-                     "count : 8; v.data = z_malloc(v.cap * sizeof(void*)); v.len = 0; va_list "
-                     "args; "
-                     "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
-                     "va_arg(args, void*); } va_end(args); return v; }\n");
-    }
-    fprintf(out, "#define Vec_push(v, i) _z_vec_push(&(v), (void*)(long)(i))\n");
+        if (g_config.use_cpp)
+        {
+            fprintf(out,
+                    "void _z_vec_push(Vec *v, void *item) { if(v->len >= v->cap) { "
+                    "v->cap = v->cap?v->cap*2:8; "
+                    "v->data = static_cast<void**>(realloc(v->data, v->cap * sizeof(void*))); } "
+                    "v->data[v->len++] = item; }\n");
+            fprintf(out, "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
+                         "count > 8 ? "
+                         "count : 8; v.data = static_cast<void**>(malloc(v.cap * sizeof(void*))); "
+                         "v.len = 0; va_list "
+                         "args; "
+                         "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
+                         "va_arg(args, void*); } va_end(args); return v; }\n");
+        }
+        else
+        {
+            fprintf(out, "void _z_vec_push(Vec *v, void *item) { if(v->len >= v->cap) { "
+                         "v->cap = v->cap?v->cap*2:8; "
+                         "v->data = z_realloc(v->data, v->cap * sizeof(void*)); } "
+                         "v->data[v->len++] = item; }\n");
+            fprintf(out, "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
+                         "count > 8 ? "
+                         "count : 8; v.data = z_malloc(v.cap * sizeof(void*)); v.len = 0; va_list "
+                         "args; "
+                         "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
+                         "va_arg(args, void*); } va_end(args); return v; }\n");
+        }
+        fprintf(out, "#define Vec_push(v, i) _z_vec_push(&(v), (void*)(long)(i))\n");
 
-    if (g_config.is_freestanding)
-    {
-        fprintf(out, "#define _z_check_bounds(index, limit) ({ ZC_AUTO _i = "
-                     "(index); if(_i < 0 "
-                     "|| _i >= (limit)) { z_panic(\"index out of bounds\"); } _i; })\n");
-    }
-    else
-    {
         fprintf(out, "#define _z_check_bounds(index, limit) ({ ZC_AUTO _i = "
                      "(index); if(_i < 0 "
                      "|| _i >= (limit)) { fprintf(stderr, \"Index out of bounds: "
                      "%%ld (limit "
                      "%%d)\\n\", (long)_i, (int)(limit)); exit(1); } _i; })\n");
+    }
+    else
+    {
+        // We might need to change this later. So TODO.
+        fprintf(out, "#define _z_check_bounds(index, limit) ({ ZC_AUTO _i = "
+                     "(index); if(_i < 0 "
+                     "|| _i >= (limit)) { z_panic(\"index out of bounds\"); } _i; })\n");
     }
 
     SliceType *c = ctx->used_slices;

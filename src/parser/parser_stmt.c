@@ -3178,6 +3178,21 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
         curr = next;
     }
 
+    {
+        StructRef *ref = ctx->parsed_funcs_list;
+        while (ref)
+        {
+            ASTNode *fn = ref->node;
+            if (fn && fn->type == NODE_FUNCTION && fn->func.is_comptime)
+            {
+                emit_func_signature(f, fn, NULL);
+                fprintf(f, ";\n");
+                codegen_node_single(ctx, fn, f);
+            }
+            ref = ref->next;
+        }
+    }
+
     fprintf(f, "int main() {\n");
     curr = stmts;
     while (curr)
@@ -3241,7 +3256,6 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
         output_src = xstrdup(""); // Empty output is valid
     }
 
-    // Cleanup
     remove(filename);
     remove(bin);
     remove(out_file);

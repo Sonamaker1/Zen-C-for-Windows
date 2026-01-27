@@ -1002,6 +1002,9 @@ char *replace_in_string(const char *src, const char *old_w, const char *new_w)
 char *replace_type_str(const char *src, const char *param, const char *concrete,
                        const char *old_struct, const char *new_struct)
 {
+    if (src && param && concrete)
+    {
+    }
     if (!src)
     {
         return NULL;
@@ -2563,6 +2566,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
 void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
                          const char *unmangled_arg, Token token)
 {
+
     // Ignore generic placeholders
     if (strlen(arg) == 1 && isupper(arg[0]))
     {

@@ -11,7 +11,7 @@
 
 /**
  * @brief Generates code for a given AST node.
- * 
+ *
  * @param ctx Parser context.
  * @param node The AST node to generate code for.
  * @param out Output file stream.
@@ -76,19 +76,19 @@ int emit_tests_and_runner(ParserContext *ctx, ASTNode *node, FILE *out);
 void print_type_defs(ParserContext *ctx, FILE *out, ASTNode *nodes);
 
 // Global state (shared across modules).
-extern ASTNode *global_user_structs;    ///< List of user defined structs.
-extern char *g_current_impl_type;       ///< Type currently being implemented (in impl block).
-extern int tmp_counter;                 ///< Counter for temporary variables.
-extern int defer_count;                 ///< Counter for defer statements in current scope.
-extern ASTNode *defer_stack[];          ///< Stack of deferred nodes.
-extern ASTNode *g_current_lambda;       ///< Current lambda being generated.
-extern char *g_current_func_ret_type;   ///< Return type of current function.
+extern ASTNode *global_user_structs;  ///< List of user defined structs.
+extern char *g_current_impl_type;     ///< Type currently being implemented (in impl block).
+extern int tmp_counter;               ///< Counter for temporary variables.
+extern int defer_count;               ///< Counter for defer statements in current scope.
+extern ASTNode *defer_stack[];        ///< Stack of deferred nodes.
+extern ASTNode *g_current_lambda;     ///< Current lambda being generated.
+extern char *g_current_func_ret_type; ///< Return type of current function.
 
 // Defer boundary tracking for proper defer execution on break/continue/return
 #define MAX_DEFER 1024
 #define MAX_LOOP_DEPTH 64
-extern int loop_defer_boundary[];       ///< Defer stack index at start of each loop.
-extern int loop_depth;                  ///< Current loop nesting depth.
-extern int func_defer_boundary;         ///< Defer stack index at function entry.
+extern int loop_defer_boundary[]; ///< Defer stack index at start of each loop.
+extern int loop_depth;            ///< Current loop nesting depth.
+extern int func_defer_boundary;   ///< Defer stack index at function entry.
 
 #endif

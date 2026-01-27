@@ -9,7 +9,7 @@
 // Unlike the parser, this focuses on semantic validity (types, definitions).
 /**
  * @brief Type Checker Context.
- * 
+ *
  * Holds the state during the semantic analysis pass.
  * Unlike the parser, this focuses on semantic validity (types, definitions, correctness).
  */
@@ -24,9 +24,9 @@ typedef struct TypeChecker
 
 /**
  * @brief Main Type Checking Entry Point.
- * 
+ *
  * Performs semantic analysis on the entire AST.
- * 
+ *
  * @param ctx Global parser context.
  * @param root Root AST node of the program.
  * @return 0 on success (no errors), non-zero if errors occurred.

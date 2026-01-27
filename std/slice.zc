@@ -1,0 +1,27 @@
+
+struct Slice<T> {
+    data: T*;
+    len: usize;
+}
+
+impl Slice<T> {
+    fn length(self) -> usize {
+        return self.len;
+    }
+    
+    fn is_empty(self) -> bool {
+        return self.len == 0;
+    }
+
+    fn get(self, idx: usize) -> Option<T> {
+        if (idx >= self.len) {
+            return Option<T>::None();
+        }
+        return Option<T>::Some(self.data[idx]);
+    }
+
+    fn at(self, idx: usize) -> Option<T> {
+        if idx >= self.len { return Option<T>::None(); }
+        return Option<T>::Some(self.data[idx]);
+    }
+}

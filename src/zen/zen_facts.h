@@ -6,7 +6,7 @@
 
 /**
  * @brief Triggers for Zen facts (easter egg system).
- * 
+ *
  * Each trigger corresponds to a specific coding pattern or event
  * which may elicit a "Zen Fact" message to the user.
  */

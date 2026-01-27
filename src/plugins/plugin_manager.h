@@ -17,7 +17,7 @@ void zptr_register_plugin(ZPlugin *plugin);
 
 /**
  * @brief Load a plugin from a shared object file (.so).
- * 
+ *
  * @param path Path to the shared object file.
  * @return ZPlugin* Pointer to the loaded plugin on success, NULL on failure.
  */

@@ -653,7 +653,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
             int has_attrs = node->func.constructor || node->func.destructor ||
                             node->func.noinline || node->func.unused || node->func.weak ||
                             node->func.cold || node->func.hot || node->func.noreturn ||
-                            node->func.pure || node->func.section;
+                            node->func.pure || node->func.section || node->func.is_export;
             if (has_attrs)
             {
                 fprintf(out, "__attribute__((");
@@ -675,6 +675,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
                 EMIT_ATTR(node->func.hot, "hot");
                 EMIT_ATTR(node->func.noreturn, "noreturn");
                 EMIT_ATTR(node->func.pure, "pure");
+                EMIT_ATTR(node->func.is_export, "visibility(\"default\")");
                 if (node->func.section)
                 {
                     if (!first)
@@ -683,7 +684,64 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
                     }
                     fprintf(out, "section(\"%s\")", node->func.section);
                 }
+
+                Attribute *custom = node->func.attributes;
+                while (custom)
+                {
+                    if (!first)
+                    {
+                        fprintf(out, ", ");
+                    }
+                    fprintf(out, "%s", custom->name);
+                    if (custom->arg_count > 0)
+                    {
+                        fprintf(out, "(");
+                        for (int i = 0; i < custom->arg_count; i++)
+                        {
+                            if (i > 0)
+                            {
+                                fprintf(out, ", ");
+                            }
+                            fprintf(out, "%s", custom->args[i]);
+                        }
+                        fprintf(out, ")");
+                    }
+                    first = 0;
+                    custom = custom->next;
+                }
+
 #undef EMIT_ATTR
+                fprintf(out, ")) ");
+            }
+            else if (node->func.attributes)
+            {
+                // Handle case where specific attributes are missing but custom ones exist
+                fprintf(out, "__attribute__((");
+                int first = 1;
+                Attribute *custom = node->func.attributes;
+                while (custom)
+                {
+                    if (!first)
+                    {
+                        fprintf(out, ", ");
+                    }
+                    fprintf(out, "%s", custom->name);
+                    if (custom->arg_count > 0)
+                    {
+                        fprintf(out, "(");
+                        for (int i = 0; i < custom->arg_count; i++)
+                        {
+                            if (i > 0)
+                            {
+                                fprintf(out, ", ");
+                            }
+                            fprintf(out, "%s", custom->args[i]);
+                        }
+                        fprintf(out, ")");
+                    }
+                    first = 0;
+                    custom = custom->next;
+                }
                 fprintf(out, ")) ");
             }
         }
@@ -697,6 +755,41 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
         fprintf(out, "{\n");
         char *prev_ret = g_current_func_ret_type;
         g_current_func_ret_type = node->func.ret_type;
+
+        // Initialize drop flags for arguments that implement Drop
+        for (int i = 0; i < node->func.arg_count; i++)
+        {
+            Type *arg_type = node->func.arg_types[i];
+            char *arg_name = node->func.param_names[i];
+            if (arg_type && arg_name)
+            {
+                // Check if type implements Drop
+                int has_drop = 0;
+                if (arg_type->kind == TYPE_STRUCT && arg_type->name)
+                {
+                    ASTNode *def = find_struct_def(ctx, arg_type->name);
+                    if (def && def->type == NODE_STRUCT && def->type_info &&
+                        def->type_info->traits.has_drop)
+                    {
+                        has_drop = 1;
+                    }
+                    else if (def)
+                    {
+                        // No drop needed
+                    }
+                    else
+                    {
+                        // No struct def found
+                    }
+                }
+
+                if (has_drop)
+                {
+                    fprintf(out, "    int __z_drop_flag_%s = 1;\n", arg_name);
+                }
+            }
+        }
+
         codegen_walker(ctx, node->func.body, out);
         for (int i = defer_count - 1; i >= 0; i--)
         {
@@ -906,6 +999,13 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
                 {
                     fprintf(out, " = ");
                     codegen_expression(ctx, node->var_decl.init_expr, out);
+                }
+                else if (node->type_info && (node->type_info->kind == TYPE_ARRAY ||
+                                             node->type_info->kind == TYPE_STRUCT ||
+                                             node->type_info->kind == TYPE_BOOL))
+                {
+                    // Zero initialize arrays and structs by default so we don't have garbage
+                    fprintf(out, " = {0}");
                 }
                 fprintf(out, ";\n");
                 if (node->var_decl.init_expr &&
