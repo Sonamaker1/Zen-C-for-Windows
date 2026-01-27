@@ -34,19 +34,19 @@
 #endif
 
 // ** ANSI COLORS **
-#define COLOR_RESET "\033[0m" ///< Reset color.
-#define COLOR_RED "\033[1;31m" ///< Red color.
-#define COLOR_GREEN "\033[1;32m" ///< Green color.
+#define COLOR_RESET "\033[0m"     ///< Reset color.
+#define COLOR_RED "\033[1;31m"    ///< Red color.
+#define COLOR_GREEN "\033[1;32m"  ///< Green color.
 #define COLOR_YELLOW "\033[1;33m" ///< Yellow color.
-#define COLOR_BLUE "\033[1;34m" ///< Blue color.
-#define COLOR_CYAN "\033[1;36m" ///< Cyan color.
-#define COLOR_BOLD "\033[1m" ///< Bold text.
+#define COLOR_BLUE "\033[1;34m"   ///< Blue color.
+#define COLOR_CYAN "\033[1;36m"   ///< Cyan color.
+#define COLOR_BOLD "\033[1m"      ///< Bold text.
 
 // ** MEMORY OVERRIDES (Arena) **
-#define free(ptr) ((void)0) ///< Free memory.
-#define malloc(sz) xmalloc(sz) ///< Allocate memory.
+#define free(ptr) ((void)0)          ///< Free memory.
+#define malloc(sz) xmalloc(sz)       ///< Allocate memory.
 #define realloc(p, s) xrealloc(p, s) ///< Reallocate memory.
-#define calloc(n, s) xcalloc(n, s) ///< Allocate and zero memory.
+#define calloc(n, s) xcalloc(n, s)   ///< Allocate and zero memory.
 
 // ** GLOBAL STATE **
 extern char *g_current_filename; ///< Current filename.
@@ -56,59 +56,59 @@ extern char *g_current_filename; ///< Current filename.
  */
 typedef enum
 {
-    TOK_EOF = 0,    ///< End of File.
-    TOK_IDENT,      ///< Identifier (variable, function name).
-    TOK_INT,        ///< Integer literal.
-    TOK_FLOAT,      ///< Float literal.
-    TOK_STRING,     ///< String literal.
-    TOK_FSTRING,    ///< Formatted string literal (f"val is {x}").
-    TOK_CHAR,       ///< Character literal.
-    TOK_LPAREN,     ///< (
-    TOK_RPAREN,     ///< )
-    TOK_LBRACE,     ///< {
-    TOK_RBRACE,     ///< }
-    TOK_LBRACKET,   ///< [
-    TOK_RBRACKET,   ///< ]
-    TOK_LANGLE,     ///< <
-    TOK_RANGLE,     ///< >
-    TOK_COMMA,      ///< ,
-    TOK_COLON,      ///< :
-    TOK_SEMICOLON,  ///< ;
-    TOK_OP,         ///< General operator (e.g. +, *, /).
-    TOK_AT,         ///< @
-    TOK_DOTDOT,     ///< ..
-    TOK_DOTDOT_EQ,  ///< ..= (inclusive range).
-    TOK_DOTDOT_LT,  ///< ..< (exclusive range, explicit).
-    TOK_ARROW,      ///< -> or =>
-    TOK_PIPE,       ///< |> (pipe operator).
-    TOK_TEST,       ///< 'test' keyword.
-    TOK_ASSERT,     ///< 'assert' keyword.
-    TOK_SIZEOF,     ///< 'sizeof' keyword.
-    TOK_DEF,        ///< 'def' keyword.
-    TOK_DEFER,      ///< 'defer' keyword.
-    TOK_AUTOFREE,   ///< 'autofree' keyword.
-    TOK_QUESTION,   ///< ?
-    TOK_USE,        ///< 'use' keyword.
-    TOK_QQ,         ///< ?? (null coalescing).
-    TOK_QQ_EQ,      ///< ??=
-    TOK_Q_DOT,      ///< ?. (optional chaining).
-    TOK_DCOLON,     ///< ::
-    TOK_TRAIT,      ///< 'trait' keyword.
-    TOK_IMPL,       ///< 'impl' keyword.
-    TOK_AND,        ///< 'and' keyword.
-    TOK_OR,         ///< 'or' keyword.
-    TOK_FOR,        ///< 'for' keyword.
-    TOK_COMPTIME,   ///< 'comptime' keyword.
-    TOK_ELLIPSIS,   ///< ...
-    TOK_UNION,      ///< 'union' keyword.
-    TOK_ASM,        ///< 'asm' keyword.
-    TOK_VOLATILE,   ///< 'volatile' keyword.
-    TOK_ASYNC,      ///< 'async' keyword.
-    TOK_AWAIT,      ///< 'await' keyword.
-    TOK_PREPROC,    ///< Preprocessor directive (#...).
-    TOK_ALIAS,      ///< 'alias' keyword.
-    TOK_COMMENT,    ///< Comment (usually skipped).
-    TOK_UNKNOWN     ///< Unknown token.
+    TOK_EOF = 0,   ///< End of File.
+    TOK_IDENT,     ///< Identifier (variable, function name).
+    TOK_INT,       ///< Integer literal.
+    TOK_FLOAT,     ///< Float literal.
+    TOK_STRING,    ///< String literal.
+    TOK_FSTRING,   ///< Formatted string literal (f"val is {x}").
+    TOK_CHAR,      ///< Character literal.
+    TOK_LPAREN,    ///< (
+    TOK_RPAREN,    ///< )
+    TOK_LBRACE,    ///< {
+    TOK_RBRACE,    ///< }
+    TOK_LBRACKET,  ///< [
+    TOK_RBRACKET,  ///< ]
+    TOK_LANGLE,    ///< <
+    TOK_RANGLE,    ///< >
+    TOK_COMMA,     ///< ,
+    TOK_COLON,     ///< :
+    TOK_SEMICOLON, ///< ;
+    TOK_OP,        ///< General operator (e.g. +, *, /).
+    TOK_AT,        ///< @
+    TOK_DOTDOT,    ///< ..
+    TOK_DOTDOT_EQ, ///< ..= (inclusive range).
+    TOK_DOTDOT_LT, ///< ..< (exclusive range, explicit).
+    TOK_ARROW,     ///< -> or =>
+    TOK_PIPE,      ///< |> (pipe operator).
+    TOK_TEST,      ///< 'test' keyword.
+    TOK_ASSERT,    ///< 'assert' keyword.
+    TOK_SIZEOF,    ///< 'sizeof' keyword.
+    TOK_DEF,       ///< 'def' keyword.
+    TOK_DEFER,     ///< 'defer' keyword.
+    TOK_AUTOFREE,  ///< 'autofree' keyword.
+    TOK_QUESTION,  ///< ?
+    TOK_USE,       ///< 'use' keyword.
+    TOK_QQ,        ///< ?? (null coalescing).
+    TOK_QQ_EQ,     ///< ??=
+    TOK_Q_DOT,     ///< ?. (optional chaining).
+    TOK_DCOLON,    ///< ::
+    TOK_TRAIT,     ///< 'trait' keyword.
+    TOK_IMPL,      ///< 'impl' keyword.
+    TOK_AND,       ///< 'and' keyword.
+    TOK_OR,        ///< 'or' keyword.
+    TOK_FOR,       ///< 'for' keyword.
+    TOK_COMPTIME,  ///< 'comptime' keyword.
+    TOK_ELLIPSIS,  ///< ...
+    TOK_UNION,     ///< 'union' keyword.
+    TOK_ASM,       ///< 'asm' keyword.
+    TOK_VOLATILE,  ///< 'volatile' keyword.
+    TOK_ASYNC,     ///< 'async' keyword.
+    TOK_AWAIT,     ///< 'await' keyword.
+    TOK_PREPROC,   ///< Preprocessor directive (#...).
+    TOK_ALIAS,     ///< 'alias' keyword.
+    TOK_COMMENT,   ///< Comment (usually skipped).
+    TOK_UNKNOWN    ///< Unknown token.
 } TokenType;
 
 /**
@@ -116,11 +116,11 @@ typedef enum
  */
 typedef struct
 {
-    TokenType type;     ///< Type of the token.
-    const char *start;  ///< Pointer to start of token in source buffer.
-    int len;            ///< Length of the token text.
-    int line;           ///< Line number (1-based).
-    int col;            ///< Column number (1-based).
+    TokenType type;    ///< Type of the token.
+    const char *start; ///< Pointer to start of token in source buffer.
+    int len;           ///< Length of the token text.
+    int line;          ///< Line number (1-based).
+    int col;           ///< Column number (1-based).
 } Token;
 
 /**
@@ -128,10 +128,10 @@ typedef struct
  */
 typedef struct
 {
-    const char *src;    ///< Source code buffer.
-    int pos;            ///< Current position index.
-    int line;           ///< Current line number.
-    int col;            ///< Current column number.
+    const char *src; ///< Source code buffer.
+    int pos;         ///< Current position index.
+    int line;        ///< Current line number.
+    int col;         ///< Current column number.
 } Lexer;
 
 /**
@@ -343,27 +343,27 @@ void warn_null_pointer(Token t, const char *expr);
  */
 typedef struct
 {
-    char *input_file;       ///< Input source file path.
-    char *output_file;      ///< Output binary file path.
+    char *input_file;  ///< Input source file path.
+    char *output_file; ///< Output binary file path.
 
     // Modes.
-    int mode_run;           ///< 1 if 'run' command (compile & execute).
-    int mode_check;         ///< 1 if 'check' command (syntax/type check only).
-    int emit_c;             ///< 1 if --emit-c (keep generated C file).
-    int verbose;            ///< 1 if --verbose.
-    int quiet;              ///< 1 if --quiet.
-    int no_zen;             ///< 1 if --no-zen (disable zen facts/easter eggs).
-    int repl_mode;          ///< 1 if --repl (internal flag for REPL usage).
-    int is_freestanding;    ///< 1 if --freestanding (no stdlib).
-    int mode_transpile;     ///< 1 if 'transpile' command (to C).
-    int use_cpp;            ///< 1 if --cpp (emit C++ compatible code).
-    int use_cuda;           ///< 1 if --cuda (emit CUDA-compatible code).
+    int mode_run;        ///< 1 if 'run' command (compile & execute).
+    int mode_check;      ///< 1 if 'check' command (syntax/type check only).
+    int emit_c;          ///< 1 if --emit-c (keep generated C file).
+    int verbose;         ///< 1 if --verbose.
+    int quiet;           ///< 1 if --quiet.
+    int no_zen;          ///< 1 if --no-zen (disable zen facts/easter eggs).
+    int repl_mode;       ///< 1 if --repl (internal flag for REPL usage).
+    int is_freestanding; ///< 1 if --freestanding (no stdlib).
+    int mode_transpile;  ///< 1 if 'transpile' command (to C).
+    int use_cpp;         ///< 1 if --cpp (emit C++ compatible code).
+    int use_cuda;        ///< 1 if --cuda (emit CUDA-compatible code).
 
     // GCC Flags accumulator.
-    char gcc_flags[4096];   ///< Flags passed to the backend compiler.
+    char gcc_flags[4096]; ///< Flags passed to the backend compiler.
 
     // C Compiler selection (default: gcc)
-    char cc[64];            ///< Backend compiler command (e.g. "gcc", "clang").
+    char cc[64]; ///< Backend compiler command (e.g. "gcc", "clang").
 } CompilerConfig;
 
 extern CompilerConfig g_config;

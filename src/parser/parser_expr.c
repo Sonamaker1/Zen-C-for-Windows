@@ -65,6 +65,10 @@ static void validate_named_arguments(Token call_token, const char *func_name, ch
 
 extern ASTNode *global_user_structs;
 
+// Forward declaration
+char *resolve_struct_name_from_type(ParserContext *ctx, Type *t, int *is_ptr_out,
+                                    char **allocated_out);
+
 // Helper to check if a type is a struct type
 int is_struct_type(ParserContext *ctx, const char *type_name)
 {
@@ -2681,7 +2685,9 @@ ASTNode *parse_primary(ParserContext *ctx, Lexer *l)
                 else
                 {
                     node->resolved_type = xstrdup("unknown");
-                    if (should_suppress_undef_warning(ctx, acc))
+                    // If the symbol exists (but type is unknown) OR suppression is requested, don't
+                    // fallback to suggestion
+                    if (sym || should_suppress_undef_warning(ctx, acc))
                     {
                         node->var_ref.suggestion = NULL;
                     }
@@ -3094,9 +3100,7 @@ ASTNode *parse_primary(ParserContext *ctx, Lexer *l)
 
             int overloaded_get = 0;
             if (node->type_info && node->type_info->kind != TYPE_ARRAY &&
-                (node->type_info->kind == TYPE_STRUCT ||
-                 (node->type_info->kind == TYPE_POINTER && node->type_info->inner &&
-                  node->type_info->inner->kind == TYPE_STRUCT)))
+                node->type_info->kind == TYPE_STRUCT)
             {
                 Type *st = node->type_info;
                 char *struct_name = (st->kind == TYPE_STRUCT) ? st->name : st->inner->name;
@@ -3200,12 +3204,11 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
         }
     }
 
-    char *sname = struct_type->name;
-    // Handle Pointers (User* -> User)
-    if (struct_type->kind == TYPE_POINTER && struct_type->inner)
-    {
-        sname = struct_type->inner->name;
-    }
+    // Use resolve_struct_name_from_type to handle Generics and Pointers correctly
+    int is_ptr = 0;
+    char *alloc_name = NULL;
+    char *sname = resolve_struct_name_from_type(ctx, struct_type, &is_ptr, &alloc_name);
+
     if (!sname)
     {
         return NULL;
@@ -3214,6 +3217,10 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
     ASTNode *def = find_struct_def(ctx, sname);
     if (!def)
     {
+        if (alloc_name)
+        {
+            free(alloc_name);
+        }
         return NULL;
     }
 
@@ -3222,9 +3229,17 @@ Type *get_field_type(ParserContext *ctx, Type *struct_type, const char *field_na
     {
         if (strcmp(f->field.name, field_name) == 0)
         {
+            if (alloc_name)
+            {
+                free(alloc_name);
+            }
             return f->type_info;
         }
         f = f->next;
+    }
+    if (alloc_name)
+    {
+        free(alloc_name);
     }
     return NULL;
 }
@@ -4476,11 +4491,16 @@ ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec)
                     {
                         struct_name = t->name;
                     }
+                    /*
                     else if (t->kind == TYPE_POINTER && t->inner && t->inner->kind == TYPE_STRUCT)
                     {
-                        struct_name = t->inner->name;
-                        is_ptr = 1;
+                        // struct_name = t->inner->name;
+                        // is_ptr = 1;
+                        // DISABLE: Pointers should use array indexing by default, not operator
+                    overload.
+                        // If users want operator overload, they must dereference first (*ptr)[idx]
                     }
+                    */
                 }
                 if (!struct_name && lhs->resolved_type)
                 {
@@ -4570,6 +4590,17 @@ ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec)
                     }
                 }
 
+                // Assign type_info for index access (Fix for nested generics)
+                if (lhs->type_info &&
+                    (lhs->type_info->kind == TYPE_ARRAY || lhs->type_info->kind == TYPE_POINTER))
+                {
+                    node->type_info = lhs->type_info->inner;
+                }
+                if (!node->type_info)
+                {
+                    node->type_info = type_new(TYPE_INT);
+                }
+
                 lhs = node;
             }
             continue;
@@ -4586,6 +4617,9 @@ ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec)
             }
             ASTNode *node = ast_create(NODE_EXPR_MEMBER);
             node->member.target = lhs;
+            node->member.field = token_strdup(field);
+            node->member.is_pointer_access = 0;
+
             node->member.field = token_strdup(field);
             node->member.is_pointer_access = 0;
 
@@ -5203,6 +5237,8 @@ ASTNode *parse_expr_prec(ParserContext *ctx, Lexer *l, Precedence min_prec)
             {
                 int is_rhs_ptr = 0;
                 char *r_alloc = NULL;
+
+                // This gives a warning as "unused" but it's needed for the rewrite.
                 char *r_name =
                     resolve_struct_name_from_type(ctx, rhs->type_info, &is_rhs_ptr, &r_alloc);
                 if (r_alloc)

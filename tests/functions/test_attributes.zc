@@ -115,3 +115,39 @@ test "struct attributes" {
     // Normal struct has padding
     assert(sizeof(NormalStruct) == 8, "NormalStruct has padding");
 }
+
+@comptime
+fn comp_helper() -> int {
+    return 123;
+}
+
+comptime {
+    let val = comp_helper();
+    assert(val == 123, "Comptime check failed!");
+}
+
+@export
+fn my_exported_func() {
+    // This function is exported
+    // I don't know how to test it over here lol.
+}
+
+@export
+struct MyExportedStruct {
+    a: int;
+    b: int;
+}
+
+@flatten
+fn my_flattened_func() {
+   // This uses a custom GCC attribute that ZenC doesn't know about natively.
+}
+
+@custom_section(".my_const_data")
+struct CustomSectionStruct {
+    x: int;
+}
+
+test "custom attributes" {
+    my_flattened_func();
+}

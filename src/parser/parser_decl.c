@@ -586,6 +586,9 @@ ASTNode *parse_var_decl(ParserContext *ctx, Lexer *l)
                     type_obj->arg_count = init->type_info->arg_count;
                     type_obj->is_varargs = init->type_info->is_varargs;
                 }
+                type_obj->array_size = init->type_info->array_size;
+                type_obj->is_raw = init->type_info->is_raw;
+                type_obj->is_explicit_struct = init->type_info->is_explicit_struct;
                 type = type_to_string(type_obj);
             }
             else if (init->type == NODE_EXPR_SLICE)
@@ -775,7 +778,7 @@ ASTNode *parse_def(ParserContext *ctx, Lexer *l)
         if (lexer_peek(l).type == TOK_INT)
         {
             Token val_tok = lexer_peek(l);
-            int val = atoi(token_strdup(val_tok)); // quick check
+            int val = (int)strtol(token_strdup(val_tok), NULL, 0); // support hex/octal
 
             ZenSymbol *s = find_symbol_entry(ctx, ns);
             if (s)

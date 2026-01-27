@@ -474,6 +474,15 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
         return node->struct_init.struct_name;
     }
 
+    if (node->type == NODE_EXPR_ARRAY_LITERAL)
+    {
+        if (node->type_info)
+        {
+            return type_to_string(node->type_info);
+        }
+        return NULL;
+    }
+
     if (node->type == NODE_EXPR_LITERAL)
     {
         if (node->literal.type_kind == LITERAL_STRING)

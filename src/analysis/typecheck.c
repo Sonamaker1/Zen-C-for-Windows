@@ -15,7 +15,10 @@ static void tc_error(TypeChecker *tc, Token t, const char *msg)
 static void tc_enter_scope(TypeChecker *tc)
 {
     Scope *s = malloc(sizeof(Scope));
-    if (!s) return;
+    if (!s)
+    {
+        return;
+    }
     s->symbols = NULL;
     s->parent = tc->current_scope;
     tc->current_scope = s;
@@ -364,6 +367,9 @@ static void check_node(TypeChecker *tc, ASTNode *node)
         break;
     case NODE_EXPR_CALL:
         check_expr_call(tc, node);
+        break;
+    case NODE_EXPR_ARRAY_LITERAL:
+        check_node(tc, node->array_literal.elements);
         break;
     default:
         // Generic recursion for lists and other nodes.

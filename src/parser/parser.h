@@ -12,18 +12,18 @@
  */
 typedef enum
 {
-    PREC_NONE,      ///< No precedence.
-    PREC_ASSIGNMENT,///< Assignment operators.
-    PREC_TERNARY,   ///< Ternary operator.
-    PREC_OR,        ///< Logical OR.
-    PREC_AND,       ///< Logical AND.
-    PREC_EQUALITY,  ///< Equality operators.
-    PREC_COMPARISON,///< Comparison operators.
-    PREC_TERM,      ///< Addition and subtraction.
-    PREC_FACTOR,    ///< Multiplication and division.
-    PREC_UNARY,     ///< Unary operators.
-    PREC_CALL,      ///< Function calls.
-    PREC_PRIMARY    ///< Primary expressions.
+    PREC_NONE,       ///< No precedence.
+    PREC_ASSIGNMENT, ///< Assignment operators.
+    PREC_TERNARY,    ///< Ternary operator.
+    PREC_OR,         ///< Logical OR.
+    PREC_AND,        ///< Logical AND.
+    PREC_EQUALITY,   ///< Equality operators.
+    PREC_COMPARISON, ///< Comparison operators.
+    PREC_TERM,       ///< Addition and subtraction.
+    PREC_FACTOR,     ///< Multiplication and division.
+    PREC_UNARY,      ///< Unary operators.
+    PREC_CALL,       ///< Function calls.
+    PREC_PRIMARY     ///< Primary expressions.
 } Precedence;
 
 // Main entry points
@@ -41,7 +41,7 @@ extern ParserContext *g_parser_ctx;
 // Symbol table
 /**
  * @brief Represents a symbol in the symbol table.
- * 
+ *
  * Used for variables, functions, and other named entities.
  */
 typedef struct ZenSymbol
@@ -61,32 +61,32 @@ typedef struct ZenSymbol
 
 /**
  * @brief Represents a lexical scope (block).
- * 
+ *
  * Scopes form a hierarchy (parent pointer) and contain a list of symbols defined in that scope.
  */
 typedef struct Scope
 {
-    ZenSymbol *symbols;     ///< Linked list of symbols in this scope.
-    struct Scope *parent;   ///< Pointer to the parent scope (NULL for global).
+    ZenSymbol *symbols;   ///< Linked list of symbols in this scope.
+    struct Scope *parent; ///< Pointer to the parent scope (NULL for global).
 } Scope;
 
 /**
  * @brief Registry entry for a function signature.
- * 
+ *
  * Stores metadata about declared functions for type checking and call validation.
  */
 typedef struct FuncSig
 {
-    char *name;             ///< Function name.
-    Token decl_token;       ///< declaration token.
-    int total_args;         ///< Total argument count.
-    char **defaults;        ///< Default values for arguments (or NULL).
-    Type **arg_types;       ///< Argument types.
-    Type *ret_type;         ///< Return type.
-    int is_varargs;         ///< 1 if variadic.
-    int is_async;           ///< 1 if async.
-    int must_use;           ///< 1 if return value must be used.
-    struct FuncSig *next;   ///< Next function in registry.
+    char *name;           ///< Function name.
+    Token decl_token;     ///< declaration token.
+    int total_args;       ///< Total argument count.
+    char **defaults;      ///< Default values for arguments (or NULL).
+    Type **arg_types;     ///< Argument types.
+    Type *ret_type;       ///< Return type.
+    int is_varargs;       ///< 1 if variadic.
+    int is_async;         ///< 1 if async.
+    int must_use;         ///< 1 if return value must be used.
+    struct FuncSig *next; ///< Next function in registry.
 } FuncSig;
 
 /**
@@ -94,7 +94,7 @@ typedef struct FuncSig
  */
 typedef struct LambdaRef
 {
-    ASTNode *node;          ///< The AST node for the lambda.
+    ASTNode *node; ///< The AST node for the lambda.
     struct LambdaRef *next;
 } LambdaRef;
 
@@ -103,8 +103,8 @@ typedef struct LambdaRef
  */
 typedef struct GenericTemplate
 {
-    char *name;             ///< Template name.
-    ASTNode *struct_node;   ///< The struct AST node (containing generic params).
+    char *name;           ///< Template name.
+    ASTNode *struct_node; ///< The struct AST node (containing generic params).
     struct GenericTemplate *next;
 } GenericTemplate;
 
@@ -113,9 +113,9 @@ typedef struct GenericTemplate
  */
 typedef struct GenericFuncTemplate
 {
-    char *name;             ///< Template name.
-    char *generic_param;    ///< Generic parameters string (legacy).
-    ASTNode *func_node;     ///< The function AST node.
+    char *name;          ///< Template name.
+    char *generic_param; ///< Generic parameters string (legacy).
+    ASTNode *func_node;  ///< The function AST node.
     struct GenericFuncTemplate *next;
 } GenericFuncTemplate;
 
@@ -124,9 +124,9 @@ typedef struct GenericFuncTemplate
  */
 typedef struct GenericImplTemplate
 {
-    char *struct_name;      ///< Target struct name.
-    char *generic_param;    ///< Generic parameters.
-    ASTNode *impl_node;     ///< The impl block AST node.
+    char *struct_name;   ///< Target struct name.
+    char *generic_param; ///< Generic parameters.
+    ASTNode *impl_node;  ///< The impl block AST node.
     struct GenericImplTemplate *next;
 } GenericImplTemplate;
 
@@ -135,7 +135,7 @@ typedef struct GenericImplTemplate
  */
 typedef struct ImportedFile
 {
-    char *path;             ///< Absolute file path.
+    char *path; ///< Absolute file path.
     struct ImportedFile *next;
 } ImportedFile;
 
@@ -144,11 +144,11 @@ typedef struct ImportedFile
  */
 typedef struct Instantiation
 {
-    char *name;             ///< Mangled name of the instantiation (e.g. "Vec_int").
-    char *template_name;    ///< Original template name (e.g. "Vec").
-    char *concrete_arg;     ///< Concrete type argument string.
-    char *unmangled_arg;    ///< Unmangled argument for substitution code.
-    ASTNode *struct_node;   ///< The AST node of the instantiated struct.
+    char *name;           ///< Mangled name of the instantiation (e.g. "Vec_int").
+    char *template_name;  ///< Original template name (e.g. "Vec").
+    char *concrete_arg;   ///< Concrete type argument string.
+    char *unmangled_arg;  ///< Unmangled argument for substitution code.
+    ASTNode *struct_node; ///< The AST node of the instantiated struct.
     struct Instantiation *next;
 } Instantiation;
 
@@ -194,9 +194,9 @@ typedef struct TupleType
  */
 typedef struct EnumVariantReg
 {
-    char *enum_name;        ///< Name of the enum.
-    char *variant_name;     ///< Name of the variant.
-    int tag_id;             ///< Integration tag value.
+    char *enum_name;    ///< Name of the enum.
+    char *variant_name; ///< Name of the variant.
+    int tag_id;         ///< Integration tag value.
     struct EnumVariantReg *next;
 } EnumVariantReg;
 
@@ -206,7 +206,7 @@ typedef struct EnumVariantReg
 typedef struct DeprecatedFunc
 {
     char *name;
-    char *reason;           ///< Optional reason for deprecation.
+    char *reason; ///< Optional reason for deprecation.
     struct DeprecatedFunc *next;
 } DeprecatedFunc;
 
@@ -215,10 +215,10 @@ typedef struct DeprecatedFunc
  */
 typedef struct Module
 {
-    char *alias;            ///< Import alias (or default name).
-    char *path;             ///< File path.
-    char *base_name;        ///< Base name of the module.
-    int is_c_header;        ///< 1 if this is a C header import.
+    char *alias;     ///< Import alias (or default name).
+    char *path;      ///< File path.
+    char *base_name; ///< Base name of the module.
+    int is_c_header; ///< 1 if this is a C header import.
     struct Module *next;
 } Module;
 
@@ -227,9 +227,9 @@ typedef struct Module
  */
 typedef struct SelectiveImport
 {
-    char *symbol;           ///< Symbol name.
-    char *alias;            ///< Local alias.
-    char *source_module;    ///< Origin module.
+    char *symbol;        ///< Symbol name.
+    char *alias;         ///< Local alias.
+    char *source_module; ///< Origin module.
     struct SelectiveImport *next;
 } SelectiveImport;
 
@@ -238,8 +238,8 @@ typedef struct SelectiveImport
  */
 typedef struct ImplReg
 {
-    char *trait;            ///< Trait name.
-    char *strct;            ///< Implementing struct name.
+    char *trait; ///< Trait name.
+    char *strct; ///< Implementing struct name.
     struct ImplReg *next;
 } ImplReg;
 
@@ -248,8 +248,8 @@ typedef struct ImplReg
  */
 typedef struct ImportedPlugin
 {
-    char *name;             ///< Plugin name (e.g., "brainfuck").
-    char *alias;            ///< Optional usage alias.
+    char *name;  ///< Plugin name (e.g., "brainfuck").
+    char *alias; ///< Optional usage alias.
     struct ImportedPlugin *next;
 } ImportedPlugin;
 
@@ -258,53 +258,54 @@ typedef struct ImportedPlugin
  */
 typedef struct TypeAlias
 {
-    char *alias;            ///< New type name.
-    char *original_type;    ///< Original type.
+    char *alias;         ///< New type name.
+    char *original_type; ///< Original type.
     struct TypeAlias *next;
 } TypeAlias;
 
 /**
  * @brief Global compilation state and symbol table.
- * 
+ *
  * ParserContext maintains the state of the compiler during parsing and analysis.
  * It holds symbol tables, type definitions, function registries, and configuration.
  */
 struct ParserContext
 {
-    Scope *current_scope;       ///< Current lexical scope for variable lookup.
-    FuncSig *func_registry;     ///< Registry of declared function signatures.
+    Scope *current_scope;   ///< Current lexical scope for variable lookup.
+    FuncSig *func_registry; ///< Registry of declared function signatures.
 
     // Lambdas
-    LambdaRef *global_lambdas;  ///< List of all lambdas generated during parsing.
-    int lambda_counter;         ///< Counter for generating unique lambda IDs.
+    LambdaRef *global_lambdas; ///< List of all lambdas generated during parsing.
+    int lambda_counter;        ///< Counter for generating unique lambda IDs.
 
 // Generics
 #define MAX_KNOWN_GENERICS 1024
-    char *known_generics[MAX_KNOWN_GENERICS]; ///< Stack of currently active generic type parameters.
-    int known_generics_count;                 ///< Count of active generic parameters.
-    GenericTemplate *templates;               ///< Struct generic templates.
-    GenericFuncTemplate *func_templates;      ///< Function generic templates.
-    GenericImplTemplate *impl_templates;      ///< Implementation block templates.
+    char
+        *known_generics[MAX_KNOWN_GENERICS]; ///< Stack of currently active generic type parameters.
+    int known_generics_count;                ///< Count of active generic parameters.
+    GenericTemplate *templates;              ///< Struct generic templates.
+    GenericFuncTemplate *func_templates;     ///< Function generic templates.
+    GenericImplTemplate *impl_templates;     ///< Implementation block templates.
 
     // Instantiations
-    Instantiation *instantiations;      ///< Cache of instantiated generic types.
-    ASTNode *instantiated_structs;      ///< List of AST nodes for instantiated structs.
-    ASTNode *instantiated_funcs;        ///< List of AST nodes for instantiated functions.
+    Instantiation *instantiations; ///< Cache of instantiated generic types.
+    ASTNode *instantiated_structs; ///< List of AST nodes for instantiated structs.
+    ASTNode *instantiated_funcs;   ///< List of AST nodes for instantiated functions.
 
     // Structs/Enums
-    StructRef *parsed_structs_list;     ///< List of all parsed struct nodes.
-    StructRef *parsed_enums_list;       ///< List of all parsed enum nodes.
-    StructRef *parsed_funcs_list;       ///< List of all parsed function nodes.
-    StructRef *parsed_impls_list;       ///< List of all parsed impl blocks.
-    StructRef *parsed_globals_list;     ///< List of all parsed global variables.
-    StructDef *struct_defs;             ///< Registry of struct definitions (map name -> node).
-    EnumVariantReg *enum_variants;      ///< Registry of enum variants for global lookup.
-    ImplReg *registered_impls;          ///< Cache of type/trait implementations.
+    StructRef *parsed_structs_list; ///< List of all parsed struct nodes.
+    StructRef *parsed_enums_list;   ///< List of all parsed enum nodes.
+    StructRef *parsed_funcs_list;   ///< List of all parsed function nodes.
+    StructRef *parsed_impls_list;   ///< List of all parsed impl blocks.
+    StructRef *parsed_globals_list; ///< List of all parsed global variables.
+    StructDef *struct_defs;         ///< Registry of struct definitions (map name -> node).
+    EnumVariantReg *enum_variants;  ///< Registry of enum variants for global lookup.
+    ImplReg *registered_impls;      ///< Cache of type/trait implementations.
 
     // Types
-    SliceType *used_slices;             ///< Cache of generated slice types.
-    TupleType *used_tuples;             ///< Cache of generated tuple types.
-    TypeAlias *type_aliases;            ///< Defined type aliases.
+    SliceType *used_slices;  ///< Cache of generated slice types.
+    TupleType *used_tuples;  ///< Cache of generated tuple types.
+    TypeAlias *type_aliases; ///< Defined type aliases.
 
     // Modules/Imports
     Module *modules;                    ///< List of registered modules.
@@ -314,24 +315,24 @@ struct ParserContext
     ImportedPlugin *imported_plugins;   ///< List of active plugins.
 
     // Config/State
-    char *current_impl_struct;          ///< Name of struct currently being implemented (in impl block).
-    ASTNode *current_impl_methods;      ///< Head of method list for current impl block.
+    char *current_impl_struct;     ///< Name of struct currently being implemented (in impl block).
+    ASTNode *current_impl_methods; ///< Head of method list for current impl block.
 
     // Internal tracking
-    DeprecatedFunc *deprecated_funcs;   ///< Registry of deprecated functions.
+    DeprecatedFunc *deprecated_funcs; ///< Registry of deprecated functions.
 
     // LSP / Fault Tolerance
-    int is_fault_tolerant;              ///< 1 if parser should recover from errors (LSP mode).
-    void *error_callback_data;          ///< User data for error callback.
+    int is_fault_tolerant;     ///< 1 if parser should recover from errors (LSP mode).
+    void *error_callback_data; ///< User data for error callback.
     void (*on_error)(void *data, Token t, const char *msg); ///< Callback for reporting errors.
 
     // LSP: Flat symbol list (persists after parsing for LSP queries)
-    ZenSymbol *all_symbols;             ///< comprehensive list of all symbols seen.
+    ZenSymbol *all_symbols; ///< comprehensive list of all symbols seen.
 
     // External C interop: suppress undefined warnings for external symbols
-    int has_external_includes;          ///< Set when `#include <...>` is used.
-    char **extern_symbols;              ///< Explicitly declared extern symbols.
-    int extern_symbol_count;            ///< Count of external symbols.
+    int has_external_includes; ///< Set when `#include <...>` is used.
+    char **extern_symbols;     ///< Explicitly declared extern symbols.
+    int extern_symbol_count;   ///< Count of external symbols.
 
     // Codegen state:
     FILE *hoist_out;    ///< File stream for hoisting code (e.g. from plugins).
@@ -450,8 +451,7 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n);
 /**
  * @brief Finds a symbol in all scopes.
  */
-ZenSymbol *find_symbol_in_all(ParserContext *ctx,
-                              const char *n);
+ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n);
 char *find_similar_symbol(ParserContext *ctx, const char *name);
 
 // Function registry
