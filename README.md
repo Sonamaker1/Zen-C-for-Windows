@@ -1,9 +1,9 @@
-# $${\color{red} \mathrm{ Use \space the \space branch \space named \space "Windows"!}}$$
+# $${\color{red} \mathrm{ Use \space the \space branch \space named \space "RedoWindows"!}}$$
 This main branch is here just to keep the UpstreamWindows branch up to date
 
 run `zig build` on the root directory of the Windows branch:
 
-https://github.com/Sonamaker1/Zen-C-for-Windows/tree/Windows
+https://github.com/Sonamaker1/Zen-C-for-Windows/tree/RedoWindows
 
 ### Unofficial windows port for Zen-C with MSVC options using Zig++. 
 Primarily designed so I can do game development work on windows, will try to test whenever I can.
