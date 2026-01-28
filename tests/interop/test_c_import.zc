@@ -1,5 +1,5 @@
 
-import "math.h" as m;
+import "tests\interop\example_math.h" as m;
 
 test "test_c_import" {
     let x = m::sin(0.0);
@@ -10,7 +10,7 @@ test "test_c_import" {
         println "Failure: Unexpected result";
         exit(1);
     }
-    }
+    
 }
 
 extern fn abs(x: int) -> int;
