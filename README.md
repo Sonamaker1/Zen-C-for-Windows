@@ -5,7 +5,7 @@ run `zig build` on the root directory of the Windows branch:
 
 https://github.com/Sonamaker1/Zen-C-for-Windows/tree/RedoWindows
 
-### Unofficial windows port for Zen-C with MSVC options using Zig++. 
+### Unofficial windows port for Zen-C. 
 Primarily designed so I can do game development work on windows, will try to test whenever I can.
 
 <div align="center">
