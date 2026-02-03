@@ -1,0 +1,360 @@
+#include "lsp_project.h"
+#include "cJSON.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// Legend indices
+#define TOKEN_TYPE_VARIABLE 0
+#define TOKEN_TYPE_FUNCTION 1
+#define TOKEN_TYPE_STRUCT 2
+#define TOKEN_TYPE_KEYWORD 3
+#define TOKEN_TYPE_STRING 4
+#define TOKEN_TYPE_NUMBER 5
+#define TOKEN_TYPE_COMMENT 6
+#define TOKEN_TYPE_TYPE 7
+#define TOKEN_TYPE_ENUM 8
+#define TOKEN_TYPE_MEMBER 9
+#define TOKEN_TYPE_OPERATOR 10
+#define TOKEN_TYPE_PARAMETER 11
+#define TOKEN_TYPE_MACRO 12
+#define TOKEN_TYPE_TYPE_PARAMETER 13
+
+typedef struct
+{
+    int line;
+    int col;
+    int length;
+    int token_type;
+    int token_modifiers;
+} SemanticToken;
+
+typedef struct
+{
+    SemanticToken *tokens;
+    int count;
+    int capacity;
+} TokenBuilder;
+
+static void builder_init(TokenBuilder *b)
+{
+    b->count = 0;
+    b->capacity = 4096;
+    b->tokens = malloc(sizeof(SemanticToken) * b->capacity);
+}
+
+static void builder_push(TokenBuilder *b, int line, int col, int length, int type, int modifiers)
+{
+    if (line < 0 || col < 0)
+    {
+        return;
+    }
+    if (b->count >= b->capacity)
+    {
+        b->capacity *= 2;
+        b->tokens = realloc(b->tokens, sizeof(SemanticToken) * b->capacity);
+    }
+    SemanticToken *t = &b->tokens[b->count++];
+    t->line = line;
+    t->col = col;
+    t->length = length;
+    t->token_type = type;
+    t->token_modifiers = modifiers;
+}
+
+static void builder_free(TokenBuilder *b)
+{
+    (void)b;
+    free(b->tokens);
+}
+
+static int compare_tokens(const void *a, const void *b)
+{
+    const SemanticToken *ta = (const SemanticToken *)a;
+    const SemanticToken *tb = (const SemanticToken *)b;
+    if (ta->line != tb->line)
+    {
+        return ta->line - tb->line;
+    }
+    return ta->col - tb->col;
+}
+
+// AST Traversal
+static void traverse_node(TokenBuilder *b, ASTNode *node)
+{
+    if (!node)
+    {
+        return;
+    }
+
+    switch (node->type)
+    {
+    case NODE_FUNCTION:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_FUNCTION, 1);
+        }
+        // Parameters
+        for (int i = 0; i < node->func.arg_count; i++)
+        {
+            Attribute *attr = node->func.attributes;
+            while (attr)
+            {
+                attr = attr->next;
+            }
+        }
+        traverse_node(b, node->func.body);
+        break;
+
+    case NODE_VAR_DECL:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_VARIABLE, 0);
+        }
+        traverse_node(b, node->var_decl.init_expr);
+        break;
+
+    case NODE_BLOCK:
+    {
+        ASTNode *stmt = node->block.statements;
+        while (stmt)
+        {
+            traverse_node(b, stmt);
+            stmt = stmt->next;
+        }
+        break;
+    }
+
+    case NODE_RETURN:
+        traverse_node(b, node->ret.value);
+        break;
+
+    case NODE_EXPR_BINARY:
+        traverse_node(b, node->binary.left);
+        traverse_node(b, node->binary.right);
+        break;
+
+    case NODE_EXPR_CALL:
+        traverse_node(b, node->call.callee);
+        {
+            ASTNode *arg = node->call.args;
+            while (arg)
+            {
+                traverse_node(b, arg);
+                arg = arg->next;
+            }
+        }
+        break;
+
+    case NODE_CONST:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_VARIABLE, 2);
+        }
+        traverse_node(b, node->var_decl.init_expr);
+        break;
+
+    case NODE_TYPE_ALIAS:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_TYPE, 0);
+        }
+        break;
+
+    case NODE_EXPR_VAR:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_VARIABLE, 0);
+        }
+        break;
+
+    case NODE_STRUCT:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_STRUCT, 0);
+        }
+        traverse_node(b, node->strct.fields);
+        break;
+
+    case NODE_FIELD:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_MEMBER, 0);
+        }
+        break;
+
+    case NODE_EXPR_MEMBER:
+        traverse_node(b, node->member.target);
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_MEMBER, 0);
+        }
+        break;
+
+    case NODE_EXPR_LITERAL:
+        if (node->token.type != TOK_EOF)
+        {
+            if (node->literal.type_kind == LITERAL_STRING)
+            {
+                builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                             TOKEN_TYPE_STRING, 0);
+            }
+            else if (node->literal.type_kind == LITERAL_INT ||
+                     node->literal.type_kind == LITERAL_FLOAT)
+            {
+                builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                             TOKEN_TYPE_NUMBER, 0);
+            }
+            else if (node->literal.type_kind == LITERAL_CHAR)
+            {
+                builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                             TOKEN_TYPE_STRING, 0);
+            }
+        }
+        break;
+
+    case NODE_TRAIT:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_STRUCT, 0);
+        }
+        traverse_node(b, node->trait.methods);
+        break;
+
+    case NODE_IMPL:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_STRUCT, 0);
+        }
+        traverse_node(b, node->impl.methods);
+        break;
+
+    case NODE_IMPL_TRAIT:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_STRUCT, 0);
+        }
+        traverse_node(b, node->impl_trait.methods);
+        break;
+
+    case NODE_ENUM:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_ENUM, 0);
+        }
+        traverse_node(b, node->enm.variants);
+        break;
+
+    case NODE_ENUM_VARIANT:
+        if (node->token.type != TOK_EOF)
+        {
+            builder_push(b, node->token.line - 1, node->token.col - 1, node->token.len,
+                         TOKEN_TYPE_ENUM, 0);
+        }
+        if (node->variant.payload)
+        {
+            // If we had a way to traverse types with tokens...
+        }
+        break;
+
+    case NODE_DESTRUCT_VAR:
+        traverse_node(b, node->destruct.init_expr);
+        traverse_node(b, node->destruct.else_block);
+        break;
+
+    case NODE_MATCH_CASE:
+        traverse_node(b, node->match_case.guard);
+        traverse_node(b, node->match_case.body);
+        break;
+
+    case NODE_LAMBDA:
+        traverse_node(b, node->lambda.body);
+        break;
+
+    case NODE_FOR_RANGE:
+        traverse_node(b, node->for_range.start);
+        traverse_node(b, node->for_range.end);
+        traverse_node(b, node->for_range.body);
+        break;
+
+    default:
+        if (node->type == NODE_ROOT)
+        {
+            traverse_node(b, node->root.children);
+        }
+        else if (node->next)
+        {
+            // Fallback to next
+        }
+        break;
+    }
+}
+
+char *lsp_semantic_tokens_full(const char *uri)
+{
+    ProjectFile *pf = lsp_project_get_file(uri);
+    if (!pf || !pf->ast)
+    {
+        return strdup("{\"data\":[]}");
+    }
+
+    TokenBuilder b;
+    builder_init(&b);
+
+    ASTNode *root = pf->ast;
+    while (root)
+    {
+        traverse_node(&b, root);
+        root = root->next;
+    }
+
+    qsort(b.tokens, b.count, sizeof(SemanticToken), compare_tokens);
+
+    cJSON *root_json = cJSON_CreateObject();
+    cJSON *data = cJSON_CreateArray();
+
+    int prev_line = 0;
+    int prev_col = 0;
+
+    for (int i = 0; i < b.count; i++)
+    {
+        SemanticToken t = b.tokens[i];
+
+        if (i > 0 && t.line == b.tokens[i - 1].line && t.col == b.tokens[i - 1].col)
+        {
+            continue;
+        }
+
+        int delta_line = t.line - prev_line;
+        int delta_col = (delta_line == 0) ? (t.col - prev_col) : t.col;
+
+        cJSON_AddItemToArray(data, cJSON_CreateNumber(delta_line));
+        cJSON_AddItemToArray(data, cJSON_CreateNumber(delta_col));
+        cJSON_AddItemToArray(data, cJSON_CreateNumber(t.length));
+        cJSON_AddItemToArray(data, cJSON_CreateNumber(t.token_type));
+        cJSON_AddItemToArray(data, cJSON_CreateNumber(t.token_modifiers));
+
+        prev_line = t.line;
+        prev_col = t.col;
+    }
+
+    cJSON_AddItemToObject(root_json, "data", data);
+
+    char *json_str = cJSON_PrintUnformatted(root_json);
+    cJSON_Delete(root_json);
+    builder_free(&b);
+
+    return json_str;
+}

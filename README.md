@@ -1,13 +1,19 @@
 
 <div align="center">
 
+[English](README.md) • [Русский](translations/README_RU.md) • [简体中文](translations/README_ZH_CN.md) • [繁體中文](translations/README_ZH_TW.md) • [Español](translations/README_ES.md) • [Italiano](translations/README_IT.md) • [Português Brasileiro](translations/README_PT_BR.md)
+
+</div>
+
+<div align="center">
+
 # Zen C
 
 **Modern Ergonomics. Zero Overhead. Pure C.**
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
-[![Version](https://img.shields.io/badge/version-0.1.0-orange)]()
+[![Version](https://img.shields.io/github/v/release/z-libs/Zen-C?label=version&color=orange)]()
 [![Platform](https://img.shields.io/badge/platform-linux-lightgrey)]()
 
 *Write like a high-level language, run like C.*
@@ -43,9 +49,11 @@ Join the discussion, share demos, ask questions, or report bugs in the official 
         - [Arrays](#arrays)
         - [Tuples](#tuples)
         - [Structs](#structs)
+        - [Opaque Structs](#opaque-structs)
         - [Enums](#enums)
         - [Unions](#unions)
         - [Type Aliases](#type-aliases)
+        - [Opaque Type Aliases](#opaque-type-aliases)
     - [4. Functions & Lambdas](#4-functions--lambdas)
         - [Functions](#functions)
         - [Const Arguments](#const-arguments)
@@ -91,6 +99,8 @@ Join the discussion, share demos, ask questions, or report bugs in the official 
         - [Volatile](#volatile)
         - [Named Constraints](#named-constraints)
     - [15. Build Directives](#15-build-directives)
+    - [16. Keywords](#16-keywords)
+    - [17. C Interoperability](#17-c-interoperability)
 - [Standard Library](#standard-library)
 - [Tooling](#tooling)
     - [Language Server (LSP)](#language-server-lsp)
@@ -100,6 +110,8 @@ Join the discussion, share demos, ask questions, or report bugs in the official 
     - [Building with Zig](#building-with-zig)
     - [C++ Interop](#c-interop)
     - [CUDA Interop](#cuda-interop)
+    - [Objective-C Interop](#objective-c-interop)
+    - [C23 Support](#c23-support)
 - [Contributing](#contributing)
 - [Attributions](#attributions)
 
@@ -154,7 +166,7 @@ zc repl
 
 ### Environment Variables
 
-You can set `ZC_ROOT` to specify the location of the Standard Library (standard imports like `import "std/vector.zc"`). This allows you to run `zc` from any directory.
+You can set `ZC_ROOT` to specify the location of the Standard Library (standard imports like `import "std/vec.zc"`). This allows you to run `zc` from any directory.
 
 ```bash
 export ZC_ROOT=/path/to/Zen-C
@@ -187,11 +199,17 @@ let y: const int = 10;  // Read-only (Type qualified)
 // y = 20;              // Error: cannot assign to const
 ```
 
+> **Type Inference**: Zen C automatically infers types for initialized variables. It compiles to C23 `auto` on supported compilers, or GCC's `__auto_type` extension otherwise.
+
 ### 2. Primitive Types
 
 | Type | C Equivalent | Description |
 |:---|:---|:---|
-| `int`, `uint` | `int`, `unsigned int` | Platform standard integer |
+| `int`, `uint` | `int32_t`, `uint32_t` | 32-bit signed/unsigned integer |
+| `c_char`, `c_uchar` | `char`, `unsigned char` | C char / unsigned char (Interop) |
+| `c_short`, `c_ushort` | `short`, `unsigned short` | C short / unsigned short (Interop) |
+| `c_int`, `c_uint` | `int`, `unsigned int` | C int / unsigned int (Interop) |
+| `c_long`, `c_ulong` | `long`, `unsigned long` | C long / unsigned long (Interop) |
 | `I8` .. `I128` or `i8` .. `i128` | `int8_t` .. `__int128_t` | Signed fixed-width integers |
 | `U8` .. `U128` or `u8` .. `u128` | `uint8_t` .. `__uint128_t` | Unsigned fixed-width integers |
 | `isize`, `usize` | `ptrdiff_t`, `size_t` | Pointer-sized integers |
@@ -201,6 +219,14 @@ let y: const int = 10;  // Read-only (Type qualified)
 | `char` | `char` | Single character |
 | `string` | `char*` | C-string (null-terminated) |
 | `U0`, `u0`, `void` | `void` | Empty type |
+| `iN` (for example, `i256`) | `_BitInt(N)` | Arbitrary bit-width signed integer (C23) |
+| `uN` (for example, `u42`) | `unsigned _BitInt(N)` | Arbitrary bit-width unsigned integer (C23) |
+
+> **Best Practices for Portable Code**
+>
+> - Use **Portable Types** (`int`, `uint`, `i64`, `u8`, etc.) for all pure Zen C logic. `int` is guaranteed to be 32-bit signed on all architectures.
+> - Use **C Interop Types** (`c_int`, `c_char`, `c_long`) **only** when interacting with C libraries (FFI). Their size varies by platform and C compiler (e.g. `c_long` size differs between Windows and Linux).
+> - Use `isize` and `usize` for array indexing and memory pointer arithmetic.
 
 ### 3. Aggregate Types
 
@@ -261,6 +287,29 @@ struct Flags {
 
 > **Note**: Structs use [Move Semantics](#move-semantics--copy-safety) by default. Fields can be accessed via `.` even on pointers (Auto-Dereference).
 
+#### Opaque Structs
+You can define a struct as `opaque` to restrict access to its fields to the defining module only, while still allowing the struct to be allocated on the stack (size is known).
+
+```zc
+// In user.zc
+opaque struct User {
+    id: int;
+    name: string;
+}
+
+fn new_user(name: string) -> User {
+    return User{id: 1, name: name}; // OK: Inside module
+}
+
+// In main.zc
+import "user.zc";
+
+fn main() {
+    let u = new_user("Alice");
+    // let id = u.id; // Error: Cannot access private field 'id'
+}
+```
+
 #### Enums
 Tagged unions (Sum types) capable of holding data.
 ```zc
@@ -285,6 +334,27 @@ Create a new name for an existing type.
 ```zc
 alias ID = int;
 alias PointMap = Map<string, Point>;
+```
+
+#### Opaque Type Aliases
+You can define a type alias as `opaque` to create a new type that is distinct from its underlying type outside of the defining module. This provides strong encapsulation and type safety without the runtime overhead of a wrapper struct.
+
+```zc
+// In library.zc
+opaque alias Handle = int;
+
+fn make_handle(v: int) -> Handle {
+    return v; // Implicit conversion allowed inside module
+}
+
+// In main.zc
+import "library.zc";
+
+fn main() {
+    let h: Handle = make_handle(42);
+    // let i: int = h; // Error: Type validation failed
+    // let h2: Handle = 10; // Error: Type validation failed
+}
 ```
 
 ### 4. Functions & Lambdas
@@ -406,9 +476,9 @@ match val {
 
 // Destructuring Enums
 match shape {
-    Shape::Circle(r)   => println "Radius: {r}",
-    Shape::Rect(w, h)  => println "Area: {w*h}",
-    Shape::Point       => println "Point"
+    Shape::Circle(r)   => { println "Radius: {r}" },
+    Shape::Rect(w, h)  => { println "Area: {w*h}" },
+    Shape::Point       => { println "Point" },
 }
 ```
 
@@ -435,8 +505,15 @@ for i in 0..<10 { ... }     // Exclusive (Explicit)
 for i in 0..=10 { ... }     // Inclusive (0 to 10)
 for i in 0..10 step 2 { ... }
 
-// Iterator (Vec, Array, or custom Iterable)
-for item in collection { ... }
+// Iterator (Vec or custom Iterable)
+for item in vec { ... }
+
+// Iterate over fixed-size arrays directly
+let arr: int[5] = [1, 2, 3, 4, 5];
+for val in arr {
+    // val is int
+    println "{val}";
+}
 
 // While
 while x < 10 { ... }
@@ -477,6 +554,11 @@ Zen C supports operator overloading for user-defined structs by implementing spe
 | | `~` | `bitnot` |
 | **Index** | `a[i]` | `get(a, i)` |
 | | `a[i] = v` | `set(a, i, v)` |
+
+> **Note on String Equality**:
+> - `string == string` performs **value comparison** (equivalent to `strcmp`).
+> - `char* == char*` performs **pointer comparison** (checks memory addresses).
+> - Mixed comparisons (e.g. `string == char*`) default to **pointer comparison**.
 
 **Example:**
 ```zc
@@ -543,7 +625,7 @@ Zen C supports a shorthand for prompting user input using the `?` prefix.
 - `? "Enter age: " (age)`: Prints prompt and scans input into the variable `age`.
     - Format specifiers are automatically inferred based on variable type.
 
-```c
+```zc
 let age: int;
 ? "How old are you? " (age);
 println "You are {age} years old.";
@@ -875,9 +957,10 @@ Decorate functions and structs to modify compiler behavior.
 | `@host` | Fn | CUDA: Host function (`__host__`). |
 | `@comptime` | Fn | Helper function available for compile-time execution. |
 | `@derive(...)` | Struct | Auto-implement traits. Supports `Debug`, `Eq` (Smart Derive), `Copy`, `Clone`. |
+| `@ctype("type")` | Fn Param | Overrides generated C type for a parameter. |
 | `@<custom>` | Any | Passes generic attributes to C (e.g. `@flatten`, `@alias("name")`). |
 
-### Custom Attributes
+#### Custom Attributes
 
 Zen C supports a powerful **Custom Attribute** system that allows you to use any GCC/Clang `__attribute__` directly in your code. Any attribute that is not explicitly recognized by the Zen C compiler is treated as a generic attribute and passed through to the generated C code.
 
@@ -889,7 +972,7 @@ Zen C attributes are mapped directly to C attributes:
 - `@name(args)` → `__attribute__((name(args)))`
 - `@name("string")` → `__attribute__((name("string")))`
 
-### Smart Derives
+#### Smart Derives
 
 Zen C provides "Smart Derives" that respect Move Semantics:
 
@@ -925,12 +1008,13 @@ Zen C simplifies the complex GCC constraint syntax with named bindings.
 // Syntax: : out(variable) : in(variable) : clobber(reg)
 // Uses {variable} placeholder syntax for readability
 
-fn add(a: int, b: int) -> int {
+fn add_five(x: int) -> int {
     let result: int;
     asm {
-        "add {result}, {a}, {b}"
+        "mov {x}, {result}"
+        "add $5, {result}"
         : out(result)
-        : in(a), in(b)
+        : in(x)
         : clobber("cc")
     }
     return result;
@@ -955,11 +1039,32 @@ Zen C supports special comments at the top of your source file to configure the 
 | `//> link:` | `-lfoo` or `path/to/lib.a` | Link against a library or object file. |
 | `//> lib:` | `path/to/libs` | Add a library search path (`-L`). |
 | `//> include:` | `path/to/headers` | Add an include search path (`-I`). |
+| `//> framework:` | `Cocoa` | Link against a macOS framework. |
 | `//> cflags:` | `-Wall -O3` | Pass arbitrary flags to the C compiler. |
 | `//> define:` | `MACRO` or `KEY=VAL` | Define a preprocessor macro (`-D`). |
 | `//> pkg-config:` | `gtk+-3.0` | Run `pkg-config` and append `--cflags` and `--libs`. |
 | `//> shell:` | `command` | Execute a shell command during the build. |
 | `//> get:` | `http://url/file` | Download a file if specific file does not exist. |
+
+#### Features
+
+**1. OS Guarding**
+Prefix directives with an OS name to apply them only on specific platforms.
+Supported prefixes: `linux:`, `windows:`, `macos:` (or `darwin:`).
+
+```zc
+//> linux: link: -lm
+//> windows: link: -lws2_32
+//> macos: framework: Cocoa
+```
+
+**2. Environment Variable Expansion**
+Use `${VAR}` syntax to expand environment variables in your directives.
+
+```zc
+//> include: ${HOME}/mylib/include
+//> lib: ${ZC_ROOT}/std
+```
 
 #### Examples
 
@@ -974,6 +1079,74 @@ import "raylib.h"
 
 fn main() { ... }
 ```
+
+### 16. Keywords
+
+The following keywords are reserved in Zen C.
+
+#### Declarations
+`alias`, `def`, `enum`, `fn`, `impl`, `import`, `let`, `module`, `opaque`, `struct`, `trait`, `union`, `use`
+
+#### Control Flow
+`async`, `await`, `break`, `catch`, `continue`, `defer`, `else`, `for`, `goto`, `guard`, `if`, `loop`, `match`, `return`, `try`, `unless`, `while`
+
+#### Special
+`asm`, `assert`, `autofree`, `comptime`, `const`, `embed`, `launch`, `ref`, `sizeof`, `static`, `test`, `volatile`
+
+#### Constants
+`true`, `false`, `null`
+
+#### C Reserved
+The following identifiers are reserved because they are keywords in C11:
+`auto`, `case`, `char`, `default`, `do`, `double`, `extern`, `float`, `inline`, `int`, `long`, `register`, `restrict`, `short`, `signed`, `switch`, `typedef`, `unsigned`, `void`, `_Atomic`, `_Bool`, `_Complex`, `_Generic`, `_Imaginary`, `_Noreturn`, `_Static_assert`, `_Thread_local`
+
+#### Operators
+`and`, `or`
+
+### 17. C Interoperability
+
+Zen C offers two ways to interact with C code: **Trusted Imports** (Convenient) and **Explicit FFI** (Safe/Precise).
+
+#### Method 1: Trusted Imports (Convenient)
+
+You can import a C header directly using the `import` keyword with the `.h` extension. This treats the header as a module and assumes all symbols accessed through it exist.
+
+```zc
+//> link: -lm
+import "math.h" as c_math;
+
+fn main() {
+    // Compiler trusts correctness; emits 'cos(...)' directly
+    let x = c_math::cos(3.14159);
+}
+```
+
+> **Pros**: Zero boilerplate. Access everything in the header immediately.
+> **Cons**: No type safety from Zen C (errors caught by C compiler later).
+
+#### Method 2: Explicit FFI (Safe)
+
+For strict type checking or when you don't want to include the text of a header, use `extern fn`.
+
+```zc
+include <stdio.h> // Emits #include <stdio.h> in generated C
+
+// Define strict signature
+extern fn printf(fmt: char*, ...) -> c_int;
+
+fn main() {
+    printf("Hello FFI: %d\n", 42); // Type checked by Zen C
+}
+```
+
+> **Pros**: Zen C ensures types match.
+> **Cons**: Requires manual declaration of functions.
+
+#### `import` vs `include`
+
+- **`import "file.h"`**: Registers the header as a named module. Enables implicit access to symbols (for example, `file::function()`).
+- **`include <file.h>`**: Purely emits `#include <file.h>` in the generated C code. Does not introduce any symbols to the Zen C compiler; you must use `extern fn` to access them.
+
 
 ---
 
@@ -997,6 +1170,13 @@ Zen C includes a standard library (`std`) covering essential functionality.
 | **`std/result.zc`** | Error handling (`Ok`/`Err`). | [Docs](docs/std/result.md) |
 | **`std/path.zc`** | Cross-platform path manipulation. | [Docs](docs/std/path.md) |
 | **`std/env.zc`** | Process environment variables. | [Docs](docs/std/env.md) |
+| **`std/net.zc`** | TCP networking (Sockets). | [Docs](docs/std/net.md) |
+| **`std/thread.zc`** | Threads and Synchronization. | [Docs](docs/std/thread.md) |
+| **`std/time.zc`** | Time measurement and sleep. | [Docs](docs/std/time.md) |
+| **`std/json.zc`** | JSON parsing and serialization. | [Docs](docs/std/json.md) |
+| **`std/stack.zc`** | LIFO Stack `Stack<T>`. | [Docs](docs/std/stack.md) |
+| **`std/set.zc`** | Generic Hash Set `Set<T>`. | [Docs](docs/std/set.md) |
+| **`std/process.zc`** | Process execution and management. | [Docs](docs/std/process.md) |
 
 ---
 
@@ -1185,7 +1365,7 @@ fn add_kernel(a: float*, b: float*, c: float*, n: int) {
 }
 
 fn main() {
-    const N = 1024;
+    def N = 1024;
     let d_a = cuda_alloc<float>(N);
     let d_b = cuda_alloc<float>(N); 
     let d_c = cuda_alloc<float>(N);
@@ -1226,6 +1406,45 @@ let tid = local_id();
 
 
 > **Note:** The `--cuda` flag sets `nvcc` as the compiler and implies `--cpp` mode. Requires the NVIDIA CUDA Toolkit.
+
+### C23 Support
+
+Zen C supports modern C23 features when using a compatible backend compiler (GCC 14+, Clang 14+, TCC (partial)).
+
+- **`auto`**: Zen C automatically maps type inference to standard C23 `auto` if `__STDC_VERSION__ >= 202300L`.
+- **`_BitInt(N)`**: Use `iN` and `uN` types (e.g., `i256`, `u12`, `i24`) to access C23 arbitrary-width integers.
+
+### Objective-C Interop
+
+Zen C can compile to Objective-C (`.m`) using the `--objc` flag, allowing you to use Objective-C frameworks (like Cocoa/Foundation) and syntax.
+
+```bash
+# Compile with clang (or gcc/gnustep)
+zc app.zc --objc --cc clang
+```
+
+#### Using Objective-C in Zen C
+
+Use `include` for headers and `raw` blocks for Objective-C syntax (`@interface`, `[...]`, `@""`).
+
+```zc
+//> macos: framework: Foundation
+//> linux: cflags: -fconstant-string-class=NSConstantString -D_NATIVE_OBJC_EXCEPTIONS
+//> linux: link: -lgnustep-base -lobjc
+
+include <Foundation/Foundation.h>
+
+fn main() {
+    raw {
+        NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+        NSLog(@"Hello from Objective-C!");
+        [pool drain];
+    }
+    println "Zen C works too!";
+}
+```
+
+> **Note:** Zen C string interpolation works with Objective-C objects (`id`) by calling `debugDescription` or `description`.
 
 ---
 

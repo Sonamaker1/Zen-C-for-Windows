@@ -58,9 +58,9 @@ void lsp_on_error(void *data, Token t, const char *msg)
 
 void lsp_check_file(const char *uri, const char *json_src, int id)
 {
+    (void)id;
     if (!g_project)
     {
-        // Fallback or lazy init? current dir
         char cwd[1024];
         if (getcwd(cwd, sizeof(cwd)))
         {
@@ -76,7 +76,6 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
     DiagnosticList diagnostics = {0};
 
     // We attach the callback to 'g_project->ctx'.
-    // NOTE: If we use lsp_project_update_file, it uses g_project->ctx.
     void *old_data = g_project->ctx->error_callback_data;
     void (*old_cb)(void *, Token, const char *) = g_project->ctx->on_error;
 
@@ -93,7 +92,6 @@ void lsp_check_file(const char *uri, const char *json_src, int id)
     // Construct JSON Response (publishDiagnostics)
     cJSON *root = cJSON_CreateObject();
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
-    cJSON_AddNumberToObject(root, "id", id);
     cJSON_AddStringToObject(root, "method", "textDocument/publishDiagnostics");
 
     cJSON *params = cJSON_CreateObject();
@@ -158,12 +156,10 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
     int target_end_line = 0, target_end_col = 0;
     int found = 0;
 
-    // 1. Check Local Index
     if (r)
     {
         if (r->type == RANGE_DEFINITION)
         {
-            // Already at definition
             target_start_line = r->start_line;
             target_start_col = r->start_col;
             target_end_line = r->end_line;
@@ -176,8 +172,6 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
             int is_local = 0;
             if (def && def->type == RANGE_DEFINITION)
             {
-                // Check name congruence logic ... (simplified for now)
-                // Assume logic in previous version was correct about checking names
                 is_local = 1;
             }
 
@@ -192,7 +186,6 @@ void lsp_goto_definition(const char *uri, int line, int col, int id)
         }
     }
 
-    // 2. Global Definition (if local failed)
     if (!found && r && r->node)
     {
         char *name = NULL;
@@ -309,10 +302,115 @@ void lsp_hover(const char *uri, int line, int col, int id)
     send_json_response(root);
 }
 
+// Helper to find local in function
+static ASTNode *find_local_in_func(ASTNode *func, const char *name)
+{
+    if (!func || !func->func.body)
+    {
+        return NULL;
+    }
+
+    ASTNode *queue[1024];
+    int q_head = 0, q_tail = 0;
+    queue[q_tail++] = func->func.body;
+
+    // Also check params!
+    if (func->func.param_names && func->func.arg_types)
+    {
+        for (int i = 0; i < func->func.arg_count; i++)
+        {
+            if (strcmp(func->func.param_names[i], name) == 0)
+            {
+                return NULL; // TODO: Args handled elsewhere
+            }
+        }
+    }
+
+    while (q_head < q_tail && q_tail < 1024)
+    {
+        ASTNode *curr = queue[q_head++];
+        if (curr->type == NODE_VAR_DECL)
+        {
+            if (strcmp(curr->var_decl.name, name) == 0)
+            {
+                return curr;
+            }
+        }
+        else if (curr->type == NODE_BLOCK)
+        {
+            ASTNode *stmt = curr->block.statements;
+            while (stmt)
+            {
+                if (q_tail < 1024)
+                {
+                    queue[q_tail++] = stmt;
+                }
+                stmt = stmt->next;
+            }
+        }
+        else if (curr->type == NODE_IF)
+        {
+            if (curr->if_stmt.then_body && q_tail < 1024)
+            {
+                queue[q_tail++] = curr->if_stmt.then_body;
+            }
+            if (curr->if_stmt.else_body && q_tail < 1024)
+            {
+                queue[q_tail++] = curr->if_stmt.else_body;
+            }
+        }
+        else if (curr->type == NODE_WHILE)
+        {
+            if (curr->while_stmt.body && q_tail < 1024)
+            {
+                queue[q_tail++] = curr->while_stmt.body;
+            }
+        }
+        else if (curr->type == NODE_FOR)
+        {
+            if (curr->for_stmt.init && q_tail < 1024)
+            {
+                queue[q_tail++] = curr->for_stmt.init;
+            }
+            if (curr->for_stmt.body && q_tail < 1024)
+            {
+                queue[q_tail++] = curr->for_stmt.body;
+            }
+        }
+    }
+    return NULL;
+}
+
+// Helper to resolve type of local var or arg
+static Type *resolve_local_type(ASTNode *func, const char *name)
+{
+    if (!func)
+    {
+        return NULL;
+    }
+    // Check args
+    if (func->func.param_names && func->func.arg_types)
+    {
+        for (int i = 0; i < func->func.arg_count; i++)
+        {
+            if (strcmp(func->func.param_names[i], name) == 0)
+            {
+                return func->func.arg_types[i];
+            }
+        }
+    }
+    // Check body vars
+    ASTNode *decl = find_local_in_func(func, name);
+    if (decl && decl->type == NODE_VAR_DECL)
+    {
+        return decl->var_decl.type_info;
+    }
+    return NULL;
+}
+
 void lsp_completion(const char *uri, int line, int col, int id)
 {
     ProjectFile *pf = lsp_project_get_file(uri);
-    // Need global project context
     if (!g_project || !g_project->ctx || !pf)
     {
         return;
@@ -323,14 +421,27 @@ void lsp_completion(const char *uri, int line, int col, int id)
     cJSON_AddNumberToObject(root, "id", id);
     cJSON *items = cJSON_CreateArray();
 
-    // 1. Context-aware completion (Dot access)
-    // ... [Same logic as before, just constructing cJSON] ...
-    // Note: To save space/complexity in this rewrite, I'll streamline the dot completion logic
-    // or just implement the global fallback for now if the regex parsing is too complex to inline
-    // perfectly here. However, the original code had significant line-scanning logic. I will
-    // attempt to preserve the dot completion logic by copying it and using cJSON.
+    ASTNode *target_func = NULL;
+    int best_line = -1;
+    if (pf->index)
+    {
+        LSPRange *r = pf->index->head;
+        while (r)
+        {
+            if (r->type == RANGE_DEFINITION && r->node && r->node->type == NODE_FUNCTION)
+            {
+                if (r->start_line <= line && r->start_line > best_line)
+                {
+                    best_line = r->start_line;
+                    target_func = r->node;
+                }
+            }
+            r = r->next;
+        }
+    }
 
     int dot_completed = 0;
+
     if (pf->source)
     {
         int cur_line = 0;
@@ -346,7 +457,6 @@ void lsp_completion(const char *uri, int line, int col, int id)
 
         if (col > 0 && ptr[col - 1] == '.')
         {
-            // Found dot logic
             int i = col - 2;
             while (i >= 0 && (ptr[i] == ' ' || ptr[i] == '\t'))
             {
@@ -360,6 +470,7 @@ void lsp_completion(const char *uri, int line, int col, int id)
                     i--;
                 }
                 int start_ident = i + 1;
+
                 if (start_ident <= end_ident)
                 {
                     int len = end_ident - start_ident + 1;
@@ -367,17 +478,34 @@ void lsp_completion(const char *uri, int line, int col, int id)
                     strncpy(var_name, ptr + start_ident, len);
                     var_name[len] = 0;
 
-                    ZenSymbol *sym = find_symbol_in_all(g_project->ctx, var_name);
+                    Type *local_type = resolve_local_type(target_func, var_name);
                     char *type_name = NULL;
-                    if (sym)
+
+                    if (local_type)
                     {
-                        if (sym->type_info)
+                        type_name = type_to_string(local_type);
+                    }
+                    else
+                    {
+                        ASTNode *decl = find_local_in_func(target_func, var_name);
+                        if (decl && decl->type == NODE_VAR_DECL && decl->var_decl.type_str)
                         {
-                            type_name = type_to_string(sym->type_info);
+                            type_name = strdup(decl->var_decl.type_str);
                         }
-                        else if (sym->type_name)
+                        else
                         {
-                            type_name = sym->type_name;
+                            ZenSymbol *sym = find_symbol_in_all(g_project->ctx, var_name);
+                            if (sym)
+                            {
+                                if (sym->type_info)
+                                {
+                                    type_name = type_to_string(sym->type_info);
+                                }
+                                else if (sym->type_name)
+                                {
+                                    type_name = strdup(sym->type_name);
+                                }
+                            }
                         }
                     }
 
@@ -389,6 +517,7 @@ void lsp_completion(const char *uri, int line, int col, int id)
                         {
                             src += 7;
                         }
+
                         char *dst = clean_name;
                         while (*src && *src != '*')
                         {
@@ -421,10 +550,7 @@ void lsp_completion(const char *uri, int line, int col, int id)
                             }
                             sd = sd->next;
                         }
-                        if (sym && sym->type_info)
-                        {
-                            free(type_name);
-                        }
+                        free(type_name);
                     }
                 }
             }
@@ -433,18 +559,33 @@ void lsp_completion(const char *uri, int line, int col, int id)
 
     if (!dot_completed)
     {
-        // Global Completion
-        FuncSig *f = g_project->ctx->func_registry;
-        while (f)
+        const char *keywords[] = {
+            "fn",     "struct",   "enum", "alias",  "return", "if",     "else",   "for",    "while",
+            "break",  "continue", "true", "false",  "int",    "char",   "bool",   "string", "void",
+            "import", "module",   "test", "assert", "defer",  "sizeof", "opaque", "unsafe", "asm",
+            "trait",  "impl",     "u8",   "u16",    "u32",    "u64",    "i8",     "i16",    "i32",
+            "i64",    "f32",      "f64",  "usize",  "isize",  "const",  "let",    "mut",    NULL};
+
+        for (int i = 0; keywords[i]; i++)
         {
             cJSON *item = cJSON_CreateObject();
-            cJSON_AddStringToObject(item, "label", f->name);
-            cJSON_AddNumberToObject(item, "kind", 3); // Function
-            char detail[256];
-            sprintf(detail, "fn %s", f->name);
-            cJSON_AddStringToObject(item, "detail", detail);
+            cJSON_AddStringToObject(item, "label", keywords[i]);
+            cJSON_AddNumberToObject(item, "kind", 14);
             cJSON_AddItemToArray(items, item);
-            f = f->next;
+        }
+
+        StructRef *g = g_project->ctx->parsed_globals_list;
+        while (g)
+        {
+            if (g->node)
+            {
+                cJSON *item = cJSON_CreateObject();
+                char *name = g->node->var_decl.name;
+                cJSON_AddStringToObject(item, "label", name);
+                cJSON_AddNumberToObject(item, "kind", 21);
+                cJSON_AddItemToArray(items, item);
+            }
+            g = g->next;
         }
 
         StructDef *s = g_project->ctx->struct_defs;
@@ -452,17 +593,187 @@ void lsp_completion(const char *uri, int line, int col, int id)
         {
             cJSON *item = cJSON_CreateObject();
             cJSON_AddStringToObject(item, "label", s->name);
-            cJSON_AddNumberToObject(item, "kind", 22); // Struct
-            char detail[256];
-            sprintf(detail, "struct %s", s->name);
-            cJSON_AddStringToObject(item, "detail", detail);
+            cJSON_AddNumberToObject(item, "kind", 22);
             cJSON_AddItemToArray(items, item);
             s = s->next;
+        }
+
+        FuncSig *f = g_project->ctx->func_registry;
+        while (f)
+        {
+            cJSON *item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "label", f->name);
+            cJSON_AddNumberToObject(item, "kind", 3);
+            cJSON_AddItemToArray(items, item);
+            f = f->next;
+        }
+
+        if (target_func)
+        {
+            if (target_func->func.param_names)
+            {
+                for (int i = 0; i < target_func->func.arg_count; i++)
+                {
+                    cJSON *item = cJSON_CreateObject();
+                    cJSON_AddStringToObject(item, "label", target_func->func.param_names[i]);
+                    cJSON_AddNumberToObject(item, "kind", 6);
+                    cJSON_AddStringToObject(item, "detail", "argument");
+                    cJSON_AddItemToArray(items, item);
+                }
+            }
+            ASTNode *queue[1024];
+            int q_head = 0;
+            int q_tail = 0;
+            if (target_func->func.body)
+            {
+                queue[q_tail++] = target_func->func.body;
+            }
+
+            while (q_head < q_tail && q_tail < 1024)
+            {
+                ASTNode *curr = queue[q_head++];
+                if (curr->type == NODE_BLOCK)
+                {
+                    ASTNode *stmt = curr->block.statements;
+                    while (stmt)
+                    {
+                        if (q_tail < 1024)
+                        {
+                            queue[q_tail++] = stmt;
+                        }
+                        stmt = stmt->next;
+                    }
+                }
+                else if (curr->type == NODE_VAR_DECL)
+                {
+                    if (curr->line < line)
+                    {
+                        cJSON *item = cJSON_CreateObject();
+                        cJSON_AddStringToObject(item, "label", curr->var_decl.name);
+                        cJSON_AddNumberToObject(item, "kind", 6);
+                        cJSON_AddItemToArray(items, item);
+                    }
+                }
+                else if (curr->type == NODE_IF)
+                {
+                    if (curr->if_stmt.then_body && q_tail < 1024)
+                    {
+                        queue[q_tail++] = curr->if_stmt.then_body;
+                    }
+                    if (curr->if_stmt.else_body && q_tail < 1024)
+                    {
+                        queue[q_tail++] = curr->if_stmt.else_body;
+                    }
+                }
+                else if (curr->type == NODE_WHILE)
+                {
+                    if (curr->while_stmt.body && q_tail < 1024)
+                    {
+                        queue[q_tail++] = curr->while_stmt.body;
+                    }
+                }
+                else if (curr->type == NODE_FOR)
+                {
+                    if (curr->for_stmt.init && q_tail < 1024)
+                    {
+                        queue[q_tail++] = curr->for_stmt.init;
+                    }
+                    if (curr->for_stmt.body && q_tail < 1024)
+                    {
+                        queue[q_tail++] = curr->for_stmt.body;
+                    }
+                }
+            }
         }
     }
 
     cJSON_AddItemToObject(root, "result", items);
     send_json_response(root);
+}
+
+static cJSON *ast_to_symbol(ASTNode *node)
+{
+    if (!node)
+    {
+        return NULL;
+    }
+    char *name = NULL;
+    int kind = 0;
+
+    if (node->type == NODE_FUNCTION)
+    {
+        name = node->func.name;
+        kind = 12;
+    }
+    else if (node->type == NODE_STRUCT)
+    {
+        name = node->strct.name;
+        kind = 23;
+    }
+    else if (node->type == NODE_VAR_DECL)
+    {
+        name = node->var_decl.name;
+        kind = 13;
+    }
+    else if (node->type == NODE_CONST)
+    {
+        name = node->var_decl.name;
+        kind = 14;
+    }
+    else if (node->type == NODE_ENUM)
+    {
+        name = node->enm.name;
+        kind = 10;
+    }
+    else if (node->type == NODE_FIELD)
+    {
+        name = node->field.name;
+        kind = 8;
+    }
+
+    if (!name)
+    {
+        return NULL;
+    }
+
+    cJSON *item = cJSON_CreateObject();
+    cJSON_AddStringToObject(item, "name", name);
+    cJSON_AddNumberToObject(item, "kind", kind);
+
+    cJSON *range = cJSON_CreateObject();
+    cJSON *start = cJSON_CreateObject();
+    cJSON_AddNumberToObject(start, "line", node->token.line > 0 ? node->token.line - 1 : 0);
+    cJSON_AddNumberToObject(start, "character", node->token.col > 0 ? node->token.col - 1 : 0);
+
+    cJSON *end = cJSON_CreateObject();
+    cJSON_AddNumberToObject(end, "line", node->token.line > 0 ? node->token.line - 1 : 0);
+    cJSON_AddNumberToObject(end, "character",
+                            (node->token.col > 0 ? node->token.col - 1 : 0) + node->token.len);
+
+    cJSON_AddItemToObject(range, "start", start);
+    cJSON_AddItemToObject(range, "end", end);
+
+    cJSON_AddItemToObject(item, "range", range);
+    cJSON *selRange = cJSON_Duplicate(range, 1);
+    cJSON_AddItemToObject(item, "selectionRange", selRange);
+
+    if (node->type == NODE_STRUCT && node->strct.fields)
+    {
+        cJSON *children = cJSON_CreateArray();
+        ASTNode *f = node->strct.fields;
+        while (f)
+        {
+            cJSON *child = ast_to_symbol(f);
+            if (child)
+            {
+                cJSON_AddItemToArray(children, child);
+            }
+            f = f->next;
+        }
+        cJSON_AddItemToObject(item, "children", children);
+    }
+
+    return item;
 }
 
 void lsp_document_symbol(const char *uri, int id)
@@ -472,7 +783,7 @@ void lsp_document_symbol(const char *uri, int id)
     cJSON_AddStringToObject(root, "jsonrpc", "2.0");
     cJSON_AddNumberToObject(root, "id", id);
 
-    if (!pf || !pf->index)
+    if (!pf || !pf->ast)
     {
         cJSON_AddNullToObject(root, "result");
         send_json_response(root);
@@ -480,62 +791,22 @@ void lsp_document_symbol(const char *uri, int id)
     }
 
     cJSON *items = cJSON_CreateArray();
-    LSPRange *r = pf->index->head;
-    while (r)
+    ASTNode *node = pf->ast;
+
+    // Unwrap ROOT node if present
+    if (node && node->type == NODE_ROOT)
     {
-        if (r->type == RANGE_DEFINITION && r->node)
+        node = node->root.children;
+    }
+
+    while (node)
+    {
+        cJSON *s = ast_to_symbol(node);
+        if (s)
         {
-            char *name = NULL;
-            int kind = 0;
-
-            if (r->node->type == NODE_FUNCTION)
-            {
-                name = r->node->func.name;
-                kind = 12;
-            }
-            else if (r->node->type == NODE_STRUCT)
-            {
-                name = r->node->strct.name;
-                kind = 23;
-            }
-            else if (r->node->type == NODE_VAR_DECL)
-            {
-                name = r->node->var_decl.name;
-                kind = 13;
-            }
-            else if (r->node->type == NODE_CONST)
-            {
-                name = r->node->var_decl.name;
-                kind = 14;
-            }
-
-            if (name)
-            {
-                cJSON *item = cJSON_CreateObject();
-                cJSON_AddStringToObject(item, "name", name);
-                cJSON_AddNumberToObject(item, "kind", kind);
-
-                cJSON *loc = cJSON_CreateObject();
-                cJSON_AddStringToObject(loc, "uri", uri);
-
-                cJSON *range = cJSON_CreateObject();
-                cJSON *start = cJSON_CreateObject();
-                cJSON_AddNumberToObject(start, "line", r->start_line);
-                cJSON_AddNumberToObject(start, "character", r->start_col);
-
-                cJSON *end = cJSON_CreateObject();
-                cJSON_AddNumberToObject(end, "line", r->end_line);
-                cJSON_AddNumberToObject(end, "character", r->end_col);
-
-                cJSON_AddItemToObject(range, "start", start);
-                cJSON_AddItemToObject(range, "end", end);
-                cJSON_AddItemToObject(loc, "range", range);
-
-                cJSON_AddItemToObject(item, "location", loc);
-                cJSON_AddItemToArray(items, item);
-            }
+            cJSON_AddItemToArray(items, s);
         }
-        r = r->next;
+        node = node->next; // Top level siblings
     }
 
     cJSON_AddItemToObject(root, "result", items);
@@ -747,5 +1018,117 @@ void lsp_signature_help(const char *uri, int line, int col, int id)
         cJSON_AddNullToObject(root, "result");
     }
 
+    send_json_response(root);
+}
+
+static char *get_symbol_at(ProjectFile *pf, int line, int col)
+{
+    if (!pf || !pf->index)
+    {
+        return NULL;
+    }
+    LSPRange *r = pf->index->head;
+    while (r)
+    {
+        int over_start = (line > r->start_line) || (line == r->start_line && col >= r->start_col);
+        int under_end = (line < r->end_line) || (line == r->end_line && col <= r->end_col);
+
+        if (over_start && under_end && r->node)
+        {
+            if (r->node->type == NODE_FUNCTION)
+            {
+                return strdup(r->node->func.name);
+            }
+            if (r->node->type == NODE_VAR_DECL)
+            {
+                return strdup(r->node->var_decl.name);
+            }
+            if (r->node->type == NODE_CONST)
+            {
+                return strdup(r->node->var_decl.name);
+            }
+            if (r->node->type == NODE_STRUCT)
+            {
+                return strdup(r->node->strct.name);
+            }
+            if (r->node->type == NODE_EXPR_VAR)
+            {
+                return strdup(r->node->var_ref.name);
+            }
+            if (r->node->type == NODE_EXPR_CALL)
+            {
+                if (r->node->call.callee && r->node->call.callee->type == NODE_EXPR_VAR)
+                {
+                    return strdup(r->node->call.callee->var_ref.name);
+                }
+            }
+        }
+        r = r->next;
+    }
+    return NULL;
+}
+
+void lsp_rename(const char *uri, int line, int col, const char *new_name, int id)
+{
+    ProjectFile *pf = lsp_project_get_file(uri);
+    cJSON *root = cJSON_CreateObject();
+    cJSON_AddStringToObject(root, "jsonrpc", "2.0");
+    cJSON_AddNumberToObject(root, "id", id);
+
+    char *name = get_symbol_at(pf, line, col);
+    if (!name)
+    {
+        cJSON_AddNullToObject(root, "result");
+        send_json_response(root);
+        return;
+    }
+
+    ReferenceResult *refs = lsp_project_find_references(name);
+    free(name);
+
+    if (!refs)
+    {
+        cJSON_AddNullToObject(root, "result");
+        send_json_response(root);
+        return;
+    }
+
+    cJSON *result = cJSON_CreateObject();
+    cJSON *changes = cJSON_CreateObject();
+
+    ReferenceResult *cur = refs;
+    while (cur)
+    {
+        cJSON *edits = cJSON_GetObjectItem(changes, cur->uri);
+        if (!edits)
+        {
+            edits = cJSON_CreateArray();
+            cJSON_AddItemToObject(changes, cur->uri, edits);
+        }
+
+        cJSON *edit = cJSON_CreateObject();
+        cJSON *range = cJSON_CreateObject();
+        cJSON *start = cJSON_CreateObject();
+        cJSON *end = cJSON_CreateObject();
+
+        cJSON_AddNumberToObject(start, "line", cur->range->start_line);
+        cJSON_AddNumberToObject(start, "character", cur->range->start_col);
+        cJSON_AddNumberToObject(end, "line", cur->range->end_line);
+        cJSON_AddNumberToObject(end, "character", cur->range->end_col);
+
+        cJSON_AddItemToObject(range, "start", start);
+        cJSON_AddItemToObject(range, "end", end);
+        cJSON_AddItemToObject(edit, "range", range);
+        cJSON_AddStringToObject(edit, "newText", new_name);
+
+        cJSON_AddItemToArray(edits, edit);
+
+        ReferenceResult *next = cur->next;
+        free(cur);
+        cur = next;
+    }
+
+    cJSON_AddItemToObject(result, "changes", changes);
+    cJSON_AddItemToObject(root, "result", result);
     send_json_response(root);
 }

@@ -149,43 +149,44 @@ void lsp_project_update_file(const char *uri, const char *src)
         return;
     }
 
+    extern char *g_current_filename;
+    g_current_filename = (char *)uri;
+
     ProjectFile *pf = lsp_project_get_file(uri);
     if (!pf)
     {
         pf = add_project_file(uri);
     }
 
-    // Clear old index
     if (pf->index)
     {
         lsp_index_free(pf->index);
         pf->index = NULL;
     }
 
-    // Update source
     if (pf->source)
     {
         free(pf->source);
     }
     pf->source = xstrdup(src);
 
-    // Parse
     Lexer l;
     lexer_init(&l, src);
 
     ASTNode *root = parse_program(g_project->ctx, &l);
 
-    // Build Index
+    pf->ast = root;
+
     pf->index = lsp_index_new();
     if (root)
     {
         lsp_build_index(pf->index, root);
+        validate_types(g_project->ctx);
     }
 }
 
 DefinitionResult lsp_project_find_definition(const char *name)
 {
-    // ... existing implementation ...
     DefinitionResult res = {0};
     if (!g_project)
     {
@@ -202,7 +203,6 @@ DefinitionResult lsp_project_find_definition(const char *name)
             {
                 if (r->type == RANGE_DEFINITION && r->node)
                 {
-                    // Check name match
                     char *found_name = NULL;
                     if (r->node->type == NODE_FUNCTION)
                     {

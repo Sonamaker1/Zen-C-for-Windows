@@ -180,6 +180,7 @@ void add_symbol_with_token(ParserContext *ctx, const char *n, const char *t, Typ
     s->is_used = 0;
     s->decl_token = tok;
     s->is_const_value = 0;
+    s->is_moved = 0;
     s->next = ctx->current_scope->symbols;
     ctx->current_scope->symbols = s;
 
@@ -402,23 +403,33 @@ void add_to_struct_list(ParserContext *ctx, ASTNode *node)
     ctx->parsed_structs_list = r;
 }
 
-void register_type_alias(ParserContext *ctx, const char *alias, const char *original)
+void register_type_alias(ParserContext *ctx, const char *alias, const char *original, int is_opaque,
+                         const char *defined_in_file)
 {
     TypeAlias *ta = xmalloc(sizeof(TypeAlias));
     ta->alias = xstrdup(alias);
     ta->original_type = xstrdup(original);
+    ta->is_opaque = is_opaque;
+    ta->defined_in_file = defined_in_file ? xstrdup(defined_in_file) : NULL;
     ta->next = ctx->type_aliases;
     ctx->type_aliases = ta;
 }
 
 const char *find_type_alias(ParserContext *ctx, const char *alias)
 {
+    TypeAlias *ta = find_type_alias_node(ctx, alias);
+    return ta ? ta->original_type : NULL;
+}
+
+TypeAlias *find_type_alias_node(ParserContext *ctx, const char *alias)
+{
     TypeAlias *ta = ctx->type_aliases;
     while (ta)
     {
         if (strcmp(ta->alias, alias) == 0)
         {
-            return ta->original_type;
+            // printf("DEBUG: Found Alias '%s' (Opaque: %d)\n", alias, ta->is_opaque);
+            return ta;
         }
         ta = ta->next;
     }
@@ -681,16 +692,22 @@ void register_tuple(ParserContext *ctx, const char *sig)
     s_def->strct.name = xstrdup(struct_name);
 
     char *s_sig = xstrdup(sig);
-    char *tok = strtok(s_sig, "_");
+    char *current = s_sig;
+    char *next_sep = strstr(current, "__");
     ASTNode *head = NULL, *tail = NULL;
     int i = 0;
-    while (tok)
+    while (current)
     {
+        if (next_sep)
+        {
+            *next_sep = 0;
+        }
+
         ASTNode *f = ast_create(NODE_FIELD);
         char fname[32];
         sprintf(fname, "v%d", i++);
         f->field.name = xstrdup(fname);
-        f->field.type = xstrdup(tok);
+        f->field.type = xstrdup(current);
 
         if (!head)
         {
@@ -702,7 +719,15 @@ void register_tuple(ParserContext *ctx, const char *sig)
         }
         tail = f;
 
-        tok = strtok(NULL, "_");
+        if (next_sep)
+        {
+            current = next_sep + 2;
+            next_sep = strstr(current, "__");
+        }
+        else
+        {
+            break;
+        }
     }
     free(s_sig);
     s_def->strct.fields = head;
@@ -3401,7 +3426,8 @@ char *consume_and_rewrite(ParserContext *ctx, Lexer *l)
 }
 
 char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out, int *count_out,
-                             Type ***types_out, char ***names_out, int *is_varargs_out)
+                             Type ***types_out, char ***names_out, int *is_varargs_out,
+                             char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
     if (t.type != TOK_LPAREN)
@@ -3415,18 +3441,52 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     char **defaults = xmalloc(sizeof(char *) * 16);
     Type **types = xmalloc(sizeof(Type *) * 16);
     char **names = xmalloc(sizeof(char *) * 16);
+    char **ctype_overrides = xmalloc(sizeof(char *) * 16);
 
     for (int i = 0; i < 16; i++)
     {
         defaults[i] = NULL;
         types[i] = NULL;
         names[i] = NULL;
+        ctype_overrides[i] = NULL;
     }
 
     if (lexer_peek(l).type != TOK_RPAREN)
     {
         while (1)
         {
+            // Check for @ctype("...") before parameter
+            char *ctype_override = NULL;
+            if (lexer_peek(l).type == TOK_AT)
+            {
+                lexer_next(l); // eat @
+                Token attr = lexer_next(l);
+                if (attr.type == TOK_IDENT && attr.len == 5 && strncmp(attr.start, "ctype", 5) == 0)
+                {
+                    if (lexer_next(l).type != TOK_LPAREN)
+                    {
+                        zpanic_at(lexer_peek(l), "Expected ( after @ctype");
+                    }
+                    Token ctype_tok = lexer_next(l);
+                    if (ctype_tok.type != TOK_STRING)
+                    {
+                        zpanic_at(ctype_tok, "@ctype requires a string argument");
+                    }
+                    // Extract string content (strip quotes)
+                    ctype_override = xmalloc(ctype_tok.len - 1);
+                    strncpy(ctype_override, ctype_tok.start + 1, ctype_tok.len - 2);
+                    ctype_override[ctype_tok.len - 2] = 0;
+                    if (lexer_next(l).type != TOK_RPAREN)
+                    {
+                        zpanic_at(lexer_peek(l), "Expected ) after @ctype string");
+                    }
+                }
+                else
+                {
+                    zpanic_at(attr, "Unknown parameter attribute @%.*s", attr.len, attr.start);
+                }
+            }
+
             Token t = lexer_next(l);
             // Handle 'self'
             if (t.type == TOK_IDENT && strncmp(t.start, "self", 4) == 0 && t.len == 4)
@@ -3479,6 +3539,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                     types[count] = type_new_ptr(type_new(TYPE_VOID));
                     add_symbol(ctx, "self", "void*", types[count]);
                 }
+                ctype_overrides[count] = ctype_override;
                 count++;
             }
             else
@@ -3523,11 +3584,20 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 }
                 else
                 {
-                    strcat(buf, type_str);
+                    // Use @ctype override if present
+                    if (ctype_override)
+                    {
+                        strcat(buf, ctype_override);
+                    }
+                    else
+                    {
+                        strcat(buf, type_str);
+                    }
                     strcat(buf, " ");
                     strcat(buf, name);
                 }
 
+                ctype_overrides[count] = ctype_override;
                 count++;
 
                 if (lexer_peek(l).type == TOK_OP && is_token(lexer_peek(l), "="))
@@ -3602,6 +3672,10 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     *count_out = count;
     *types_out = types;
     *names_out = names;
+    if (ctype_overrides_out)
+    {
+        *ctype_overrides_out = ctype_overrides;
+    }
     return buf;
 }
 

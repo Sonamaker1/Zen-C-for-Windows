@@ -28,36 +28,49 @@ typedef enum
  */
 typedef enum
 {
-    TYPE_VOID,     ///< `void` type.
-    TYPE_BOOL,     ///< `bool` type.
-    TYPE_CHAR,     ///< `char` type.
-    TYPE_STRING,   ///< `string` type.
-    TYPE_U0,       ///< `u0` type.
-    TYPE_I8,       ///< `i8` type.
-    TYPE_U8,       ///< `u8` type.
-    TYPE_I16,      ///< `i16` type.
-    TYPE_U16,      ///< `u16` type.
-    TYPE_I32,      ///< `i32` type.
-    TYPE_U32,      ///< `u32` type.
-    TYPE_I64,      ///< `i64` type.
-    TYPE_U64,      ///< `u64` type.
-    TYPE_I128,     ///< `i128` type.
-    TYPE_U128,     ///< `u128` type.
-    TYPE_F32,      ///< `f32` type.
-    TYPE_F64,      ///< `f64` type.
-    TYPE_INT,      ///< `int` (alias, usually i32).
-    TYPE_FLOAT,    ///< `float` (alias).
-    TYPE_USIZE,    ///< `usize` (pointer size unsigned).
-    TYPE_ISIZE,    ///< `isize` (pointer size signed).
-    TYPE_BYTE,     ///< `byte`.
-    TYPE_RUNE,     ///< `rune`.
-    TYPE_UINT,     ///< `uint` (alias).
+    TYPE_VOID,   ///< `void` type.
+    TYPE_BOOL,   ///< `bool` type.
+    TYPE_CHAR,   ///< `char` type.
+    TYPE_STRING, ///< `string` type.
+    TYPE_U0,     ///< `u0` type.
+    TYPE_I8,     ///< `i8` type.
+    TYPE_U8,     ///< `u8` type.
+    TYPE_I16,    ///< `i16` type.
+    TYPE_U16,    ///< `u16` type.
+    TYPE_I32,    ///< `i32` type.
+    TYPE_U32,    ///< `u32` type.
+    TYPE_I64,    ///< `i64` type.
+    TYPE_U64,    ///< `u64` type.
+    TYPE_I128,   ///< `i128` type.
+    TYPE_U128,   ///< `u128` type.
+    TYPE_F32,    ///< `f32` type.
+    TYPE_F64,    ///< `f64` type.
+    TYPE_INT,    ///< `int` (alias, usually i32).
+    TYPE_FLOAT,  ///< `float` (alias).
+    TYPE_USIZE,  ///< `usize` (pointer size unsigned).
+    TYPE_ISIZE,  ///< `isize` (pointer size signed).
+    TYPE_BYTE,   ///< `byte`.
+    TYPE_RUNE,   ///< `rune`.
+    TYPE_UINT,   ///< `uint` (alias).
+    // Portable C Types (FFI)
+    TYPE_C_INT,    ///< `c_int` (int).
+    TYPE_C_UINT,   ///< `c_uint` (unsigned int).
+    TYPE_C_LONG,   ///< `c_long` (long).
+    TYPE_C_ULONG,  ///< `c_ulong` (unsigned long).
+    TYPE_C_SHORT,  ///< `c_short` (short).
+    TYPE_C_USHORT, ///< `c_ushort` (unsigned short).
+    TYPE_C_CHAR,   ///< `c_char` (char).
+    TYPE_C_UCHAR,  ///< `c_uchar` (unsigned char).
+
     TYPE_STRUCT,   ///< Struct type.
     TYPE_ENUM,     ///< Enum type.
     TYPE_POINTER,  ///< Pointer type (*).
     TYPE_ARRAY,    ///< Fixed size array [N].
     TYPE_FUNCTION, ///< Function pointer or reference.
     TYPE_GENERIC,  ///< Generic type parameter (T).
+    TYPE_ALIAS,    ///< Opaque type alias.
+    TYPE_BITINT,   ///< C23 _BitInt(N).
+    TYPE_UBITINT,  ///< C23 unsigned _BitInt(N).
     TYPE_UNKNOWN   ///< Unknown/unresolved type.
 } TypeKind;
 
@@ -74,7 +87,7 @@ typedef struct Type
     int is_const;           ///< 1 if const-qualified.
     int is_explicit_struct; ///< 1 if defined with "struct" keyword explicitly.
     int is_raw;             // Raw function pointer (fn*)
-    int array_size;         ///< Size for fixed-size arrays.
+    int array_size;         ///< Size for fixed-size arrays. For TYPE_BITINT, this is the bit width.
     union
     {
         int is_varargs;  ///< 1 if function type is variadic.
@@ -84,6 +97,11 @@ typedef struct Type
             int has_drop;     ///< 1 if type implements Drop trait (RAII).
             int has_iterable; ///< 1 if type implements Iterable trait.
         } traits;
+        struct
+        {
+            int is_opaque_alias;
+            char *alias_defined_in_file;
+        } alias;
     };
 } Type;
 
@@ -221,6 +239,8 @@ struct ASTNode
             int cuda_device; // @device -> __device__
             int cuda_host;   // @host -> __host__
 
+            char **c_type_overrides; // @ctype("...") per parameter
+
             Attribute *attributes; // Custom attributes
         } func;
 
@@ -263,6 +283,8 @@ struct ASTNode
         {
             char *alias;
             char *original_type;
+            int is_opaque;
+            char *defined_in_file;
         } type_alias;
 
         struct
@@ -436,6 +458,8 @@ struct ASTNode
             Attribute *attributes; // Custom attributes
             char **used_structs;   // Names of structs used/mixed-in
             int used_struct_count;
+            int is_opaque;
+            char *defined_in_file; // File where the struct is defined (for privacy check)
         } strct;
 
         struct

@@ -12,6 +12,7 @@ typedef struct ProjectFile
     char *path;      ///< Absolute file path.
     char *uri;       ///< file:// URI.
     char *source;    ///< Cached source content (in-memory).
+    ASTNode *ast;    ///< Cached AST for semantic analysis.
     LSPIndex *index; ///< File-specific symbol index.
     struct ProjectFile *next;
 } ProjectFile;
@@ -60,5 +61,8 @@ typedef struct ReferenceResult
 } ReferenceResult;
 
 ReferenceResult *lsp_project_find_references(const char *name);
+
+// Semantic Tokens
+char *lsp_semantic_tokens_full(const char *uri);
 
 #endif

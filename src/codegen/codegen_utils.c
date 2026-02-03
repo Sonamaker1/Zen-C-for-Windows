@@ -41,7 +41,7 @@ char *strip_template_suffix(const char *name)
 }
 
 // Helper to emit C declaration (handle arrays, function pointers correctly)
-void emit_c_decl(FILE *out, const char *type_str, const char *name)
+void emit_c_decl(ParserContext *ctx, FILE *out, const char *type_str, const char *name)
 {
     char *bracket = strchr(type_str, '[');
     char *generic = strchr(type_str, '<');
@@ -64,9 +64,34 @@ void emit_c_decl(FILE *out, const char *type_str, const char *name)
     }
     else if (generic && (!bracket || generic < bracket))
     {
-        // Strip generic part for C output
-        int base_len = generic - type_str;
-        fprintf(out, "%.*s %s", base_len, type_str, name);
+        char mangled_candidate[256];
+        char *gt = strchr(generic, '>');
+        int success = 0;
+
+        if (gt)
+        {
+            int base_len = generic - type_str;
+            int arg_len = gt - generic - 1;
+
+            // Limit check
+            if (base_len + arg_len + 2 < 256)
+            {
+                snprintf(mangled_candidate, 256, "%.*s_%.*s", base_len, type_str, arg_len,
+                         generic + 1);
+
+                if (find_struct_def_codegen(ctx, mangled_candidate))
+                {
+                    fprintf(out, "%s %s", mangled_candidate, name);
+                    success = 1;
+                }
+            }
+        }
+
+        if (!success)
+        {
+            int base_len = generic - type_str;
+            fprintf(out, "%.*s %s", base_len, type_str, name);
+        }
 
         if (bracket)
         {
@@ -87,8 +112,7 @@ void emit_c_decl(FILE *out, const char *type_str, const char *name)
 // Helper to emit variable declarations with array types.
 void emit_var_decl_type(ParserContext *ctx, FILE *out, const char *type_str, const char *var_name)
 {
-    (void)ctx;
-    emit_c_decl(out, type_str, var_name);
+    emit_c_decl(ctx, out, type_str, var_name);
 }
 
 // Find struct definition
@@ -169,6 +193,7 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
     {
         return NULL;
     }
+
     if (node->resolved_type && strcmp(node->resolved_type, "unknown") != 0 &&
         strcmp(node->resolved_type, "void*") != 0)
     {
@@ -300,6 +325,65 @@ char *infer_type(ParserContext *ctx, ASTNode *node)
                     strncpy(extracted, start, len);
                     extracted[len] = 0;
                     return extracted;
+                }
+            }
+
+            // Find the struct/enum definition and look for "Ok" or "val"
+            char *search_name = inner_type;
+            if (strncmp(search_name, "struct ", 7) == 0)
+            {
+                search_name += 7;
+            }
+
+            ASTNode *def = find_struct_def_codegen(ctx, search_name);
+            if (!def)
+            {
+                // check enums list explicitly if not found in instantiated list
+                StructRef *er = ctx->parsed_enums_list;
+                while (er)
+                {
+                    if (er->node && er->node->type == NODE_ENUM &&
+                        strcmp(er->node->enm.name, search_name) == 0)
+                    {
+                        def = er->node;
+                        break;
+                    }
+                    er = er->next;
+                }
+            }
+
+            if (def)
+            {
+                if (def->type == NODE_ENUM)
+                {
+                    // Look for "Ok" variant
+                    ASTNode *var = def->enm.variants;
+                    while (var)
+                    {
+                        if (var->variant.name && strcmp(var->variant.name, "Ok") == 0)
+                        {
+                            if (var->variant.payload)
+                            {
+                                return codegen_type_to_string(var->variant.payload);
+                            }
+                            // Ok with no payload? Then it's void/u0.
+                            return "void";
+                        }
+                        var = var->next;
+                    }
+                }
+                else if (def->type == NODE_STRUCT)
+                {
+                    // Look for "val" field
+                    ASTNode *field = def->strct.fields;
+                    while (field)
+                    {
+                        if (field->field.name && strcmp(field->field.name, "val") == 0)
+                        {
+                            return xstrdup(field->field.type);
+                        }
+                        field = field->next;
+                    }
                 }
             }
         }
@@ -644,7 +728,7 @@ char *codegen_type_to_string(Type *t)
 }
 
 // Emit function signature using Type info for correct C codegen
-void emit_func_signature(FILE *out, ASTNode *func, const char *name_override)
+void emit_func_signature(ParserContext *ctx, FILE *out, ASTNode *func, const char *name_override)
 {
     if (!func || func->type != NODE_FUNCTION)
     {
@@ -714,7 +798,12 @@ void emit_func_signature(FILE *out, ASTNode *func, const char *name_override)
             }
 
             char *type_str = NULL;
-            if (func->func.arg_types && func->func.arg_types[i])
+            // Check for @ctype override first
+            if (func->func.c_type_overrides && func->func.c_type_overrides[i])
+            {
+                type_str = xstrdup(func->func.c_type_overrides[i]);
+            }
+            else if (func->func.arg_types && func->func.arg_types[i])
             {
                 type_str = codegen_type_to_string(func->func.arg_types[i]);
             }
@@ -724,13 +813,14 @@ void emit_func_signature(FILE *out, ASTNode *func, const char *name_override)
             }
 
             const char *name = "";
+
             if (func->func.param_names && func->func.param_names[i])
             {
                 name = func->func.param_names[i];
             }
 
             // check if array type
-            emit_c_decl(out, type_str, name);
+            emit_c_decl(ctx, out, type_str, name);
             free(type_str);
         }
         if (func->func.is_varargs)

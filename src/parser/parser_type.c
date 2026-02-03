@@ -33,12 +33,25 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         char *name = token_strdup(t);
 
         // Check for alias
-        const char *aliased = find_type_alias(ctx, name);
-        if (aliased)
+        TypeAlias *alias_node = find_type_alias_node(ctx, name);
+        if (alias_node)
         {
             free(name);
             Lexer tmp;
-            lexer_init(&tmp, aliased);
+            lexer_init(&tmp, alias_node->original_type);
+
+            if (alias_node->is_opaque)
+            {
+                Type *underlying = parse_type_formal(ctx, &tmp);
+                Type *wrapper = type_new(TYPE_ALIAS);
+                wrapper->name = xstrdup(alias_node->alias);
+                wrapper->inner = underlying;
+                wrapper->alias.is_opaque_alias = 1;
+                wrapper->alias.alias_defined_in_file =
+                    alias_node->defined_in_file ? xstrdup(alias_node->defined_in_file) : NULL;
+                return wrapper;
+            }
+
             return parse_type_formal(ctx, &tmp);
         }
 
@@ -287,6 +300,90 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             free(name);
             return type_new(TYPE_I16);
         }
+
+        // C23 BitInt Support (i42, u256, etc.)
+        if ((name[0] == 'i' || name[0] == 'u') && isdigit(name[1]))
+        {
+            // Verify it is a purely numeric suffix
+            int valid = 1;
+            for (size_t k = 1; k < strlen(name); k++)
+            {
+                if (!isdigit(name[k]))
+                {
+                    valid = 0;
+                    break;
+                }
+            }
+            if (valid)
+            {
+                int width = atoi(name + 1);
+                if (width > 0)
+                {
+                    // Map standard widths to standard types for standard ABI/C compabitility
+                    if (name[0] == 'i')
+                    {
+                        if (width == 8)
+                        {
+                            free(name);
+                            return type_new(TYPE_I8);
+                        }
+                        if (width == 16)
+                        {
+                            free(name);
+                            return type_new(TYPE_I16);
+                        }
+                        if (width == 32)
+                        {
+                            free(name);
+                            return type_new(TYPE_I32);
+                        }
+                        if (width == 64)
+                        {
+                            free(name);
+                            return type_new(TYPE_I64);
+                        }
+                        if (width == 128)
+                        {
+                            free(name);
+                            return type_new(TYPE_I128);
+                        }
+                    }
+                    else
+                    {
+                        if (width == 8)
+                        {
+                            free(name);
+                            return type_new(TYPE_U8);
+                        }
+                        if (width == 16)
+                        {
+                            free(name);
+                            return type_new(TYPE_U16);
+                        }
+                        if (width == 32)
+                        {
+                            free(name);
+                            return type_new(TYPE_U32);
+                        }
+                        if (width == 64)
+                        {
+                            free(name);
+                            return type_new(TYPE_U64);
+                        }
+                        if (width == 128)
+                        {
+                            free(name);
+                            return type_new(TYPE_U128);
+                        }
+                    }
+
+                    Type *t = type_new(name[0] == 'u' ? TYPE_UBITINT : TYPE_BITINT);
+                    t->array_size = width;
+                    free(name);
+                    return t;
+                }
+            }
+        }
         if (strcmp(name, "u16") == 0)
         {
             free(name);
@@ -330,13 +427,13 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         if (strcmp(name, "uint") == 0)
         {
             free(name);
-            return type_new(TYPE_UINT);
+            return type_new(TYPE_U32); // Strict uint32_t
         }
 
         if (strcmp(name, "int") == 0)
         {
             free(name);
-            return type_new(TYPE_INT);
+            return type_new(TYPE_I32); // Strict int32_t
         }
         if (strcmp(name, "float") == 0)
         {
@@ -370,23 +467,31 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         }
         if (strcmp(name, "long") == 0)
         {
+            zwarn_at(t, "'long' is treated as portable 'int64_t' in Zen C. Use 'c_long' for "
+                        "platform-dependent C long.");
             free(name);
             return type_new(TYPE_I64);
         }
         if (strcmp(name, "short") == 0)
         {
+            zwarn_at(t, "'short' is treated as portable 'int16_t' in Zen C. Use 'c_short' for "
+                        "platform-dependent C short.");
             free(name);
             return type_new(TYPE_I16);
         }
         if (strcmp(name, "unsigned") == 0)
         {
+            zwarn_at(t, "'unsigned' is treated as portable 'uint32_t' in Zen C. Use 'c_uint' for "
+                        "platform-dependent C unsigned int.");
             free(name);
-            return type_new(TYPE_UINT);
+            return type_new(TYPE_U32);
         }
         if (strcmp(name, "signed") == 0)
         {
+            zwarn_at(t, "'signed' is treated as portable 'int32_t' in Zen C. Use 'c_int' for "
+                        "platform-dependent C int.");
             free(name);
-            return type_new(TYPE_INT);
+            return type_new(TYPE_I32);
         }
         if (strcmp(name, "int8_t") == 0)
         {
@@ -437,6 +542,48 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
         {
             free(name);
             return type_new(TYPE_ISIZE);
+        }
+
+        // Portable C Types
+        if (strcmp(name, "c_int") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_INT);
+        }
+        if (strcmp(name, "c_uint") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_UINT);
+        }
+        if (strcmp(name, "c_long") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_LONG);
+        }
+        if (strcmp(name, "c_ulong") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_ULONG);
+        }
+        if (strcmp(name, "c_short") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_SHORT);
+        }
+        if (strcmp(name, "c_ushort") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_USHORT);
+        }
+        if (strcmp(name, "c_char") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_CHAR);
+        }
+        if (strcmp(name, "c_uchar") == 0)
+        {
+            free(name);
+            return type_new(TYPE_C_UCHAR);
         }
 
         // Relaxed Type Check: If explicit 'struct Name', trust the user.
@@ -580,7 +727,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
                     zpanic_at(t, "Expected > after generic");
                 }
 
-                char *unmangled_arg = type_to_c_string(first_arg);
+                char *unmangled_arg = type_to_string(first_arg);
 
                 int is_single_dep = 0;
                 for (int k = 0; k < ctx->known_generics_count; ++k)
@@ -694,7 +841,7 @@ Type *parse_type_base(ParserContext *ctx, Lexer *l)
             if (lexer_peek(l).type == TOK_COMMA)
             {
                 lexer_next(l);
-                strcat(sig, "_");
+                strcat(sig, "__");
             }
             else
             {

@@ -11,12 +11,15 @@ void lsp_hover(const char *uri, int line, int col, int id);
 void lsp_completion(const char *uri, int line, int col, int id);
 void lsp_document_symbol(const char *uri, int id);
 void lsp_references(const char *uri, int line, int col, int id);
+// Prototype
 void lsp_signature_help(const char *uri, int line, int col, int id);
+void lsp_rename(const char *uri, int line, int col, const char *new_name, int id);
 
 // Helper to extract textDocument params
 static void get_params(cJSON *root, char **uri, int *line, int *col)
 {
     cJSON *params = cJSON_GetObjectItem(root, "params");
+
     if (!params)
     {
         return;
@@ -111,10 +114,28 @@ void handle_request(const char *json_str)
             "\"capabilities\":{\"textDocumentSync\":{\"openClose\":true,\"change\":1},"
             "\"definitionProvider\":true,\"hoverProvider\":true,"
             "\"referencesProvider\":true,\"documentSymbolProvider\":true,"
+            "\"renameProvider\":true,"
             "\"signatureHelpProvider\":{\"triggerCharacters\":[\"(\"]},"
             "\"completionProvider\":{"
-            "\"triggerCharacters\":[\".\"]}}}}";
-        fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(response), response);
+            "\"triggerCharacters\":[\".\"]},"
+            "\"semanticTokensProvider\":{\"legend\":{\"tokenTypes\":[\"variable\",\"function\","
+            "\"struct\",\"keyword\",\"string\",\"number\",\"comment\",\"type\",\"enum\",\"member\","
+            "\"operator\",\"parameter\",\"macro\",\"typeParameter\"],\"tokenModifiers\":["
+            "\"declaration\",\"definition\",\"readonly\","
+            "\"static\",\"deprecated\",\"abstract\",\"async\",\"modification\",\"documentation\","
+            "\"defaultLibrary\"]},\"full\":true}"
+            "}}}}}";
+
+        // Dynamically construct response with correct ID
+        cJSON *res_json = cJSON_Parse(response);
+        cJSON_DeleteItemFromObject(res_json, "id");
+        cJSON_AddNumberToObject(res_json, "id", id);
+
+        char *str = cJSON_PrintUnformatted(res_json);
+        fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
+        fflush(stdout);
+        free(str);
+        cJSON_Delete(res_json);
         fflush(stdout);
     }
     else if (strcmp(method, "textDocument/didOpen") == 0 ||
@@ -205,10 +226,61 @@ void handle_request(const char *json_str)
     {
         char *uri = NULL;
         int line = 0, col = 0;
-        get_params(json, &uri, &line, &col);
         if (uri)
         {
             lsp_signature_help(uri, line, col, id);
+            free(uri);
+        }
+    }
+    else if (strcmp(method, "textDocument/semanticTokens/full") == 0)
+    {
+        cJSON *params = cJSON_GetObjectItem(json, "params");
+        cJSON *doc = cJSON_GetObjectItem(params, "textDocument");
+        if (doc)
+        {
+            cJSON *uri_item = cJSON_GetObjectItem(doc, "uri");
+            if (uri_item && uri_item->valuestring)
+            {
+                char *resp = lsp_semantic_tokens_full(uri_item->valuestring);
+                if (resp)
+                {
+                    cJSON *res_json = cJSON_CreateObject();
+                    cJSON_AddStringToObject(res_json, "jsonrpc", "2.0");
+                    cJSON_AddNumberToObject(res_json, "id", id);
+                    cJSON *result = cJSON_Parse(resp);
+                    if (result)
+                    {
+                        cJSON_AddItemToObject(res_json, "result", result);
+                    }
+                    else
+                    {
+                        // fallback empty
+                        cJSON_AddItemToObject(res_json, "result", cJSON_CreateObject());
+                    }
+                    free(resp);
+
+                    char *str = cJSON_PrintUnformatted(res_json);
+                    fprintf(stdout, "Content-Length: %zu\r\n\r\n%s", strlen(str), str);
+                    fflush(stdout);
+                    free(str);
+                    cJSON_Delete(res_json);
+                }
+            }
+        }
+    }
+    else if (strcmp(method, "textDocument/rename") == 0)
+    {
+        char *uri = NULL;
+        int line = 0, col = 0;
+        get_params(json, &uri, &line, &col);
+
+        cJSON *params = cJSON_GetObjectItem(json, "params");
+        cJSON *nn = cJSON_GetObjectItem(params, "newName");
+        char *new_name = nn ? nn->valuestring : NULL;
+
+        if (uri && new_name)
+        {
+            lsp_rename(uri, line, col, new_name, id);
             free(uri);
         }
     }

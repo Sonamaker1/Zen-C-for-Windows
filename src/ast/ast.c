@@ -100,6 +100,10 @@ int is_integer_type(Type *t)
             t->kind == TYPE_I64 || t->kind == TYPE_U64 || t->kind == TYPE_USIZE ||
             t->kind == TYPE_ISIZE || t->kind == TYPE_BYTE || t->kind == TYPE_RUNE ||
             t->kind == TYPE_UINT || t->kind == TYPE_I128 || t->kind == TYPE_U128 ||
+            t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT ||
+            t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG ||
+            t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR ||
+            t->kind == TYPE_C_UCHAR ||
             (t->kind == TYPE_STRUCT && t->name &&
              (0 == strcmp(t->name, "int8_t") || 0 == strcmp(t->name, "uint8_t") ||
               0 == strcmp(t->name, "int16_t") || 0 == strcmp(t->name, "uint16_t") ||
@@ -167,6 +171,18 @@ int type_eq(Type *a, Type *b)
     if (a->kind == TYPE_STRUCT || a->kind == TYPE_GENERIC)
     {
         return 0 == strcmp(a->name, b->name);
+    }
+    if (a->kind == TYPE_ALIAS)
+    {
+        if (a->alias.is_opaque_alias)
+        {
+            if (b->kind != TYPE_ALIAS || !b->alias.is_opaque_alias)
+            {
+                return 0;
+            }
+            return 0 == strcmp(a->name, b->name);
+        }
+        return type_eq(a->inner, b);
     }
     if (a->kind == TYPE_POINTER || a->kind == TYPE_ARRAY)
     {
@@ -246,10 +262,41 @@ static char *type_to_string_impl(Type *t)
         return xstrdup("int32_t");
     case TYPE_UINT:
         return xstrdup("unsigned int");
+
+    // Portable C Types
+    case TYPE_C_INT:
+        return xstrdup("c_int");
+    case TYPE_C_UINT:
+        return xstrdup("c_uint");
+    case TYPE_C_LONG:
+        return xstrdup("c_long");
+    case TYPE_C_ULONG:
+        return xstrdup("c_ulong");
+    case TYPE_C_SHORT:
+        return xstrdup("c_short");
+    case TYPE_C_USHORT:
+        return xstrdup("c_ushort");
+    case TYPE_C_CHAR:
+        return xstrdup("c_char");
+    case TYPE_C_UCHAR:
+        return xstrdup("c_uchar");
+
     case TYPE_INT:
         return xstrdup("int");
     case TYPE_FLOAT:
         return xstrdup("float");
+    case TYPE_BITINT:
+    {
+        char *res = xmalloc(32);
+        sprintf(res, "i%d", t->array_size);
+        return res;
+    }
+    case TYPE_UBITINT:
+    {
+        char *res = xmalloc(32);
+        sprintf(res, "u%d", t->array_size);
+        return res;
+    }
 
     case TYPE_POINTER:
     {
@@ -340,6 +387,8 @@ static char *type_to_string_impl(Type *t)
         }
         return xstrdup(t->name);
     }
+    case TYPE_ALIAS:
+        return xstrdup(t->name);
 
     default:
         return xstrdup("unknown");
@@ -434,10 +483,43 @@ static char *type_to_c_string_impl(Type *t)
         return xstrdup("int32_t");
     case TYPE_UINT:
         return xstrdup("unsigned int");
-    case TYPE_INT:
+
+    // Portable C Types (Map directly to C types)
+    case TYPE_C_INT:
         return xstrdup("int");
+    case TYPE_C_UINT:
+        return xstrdup("unsigned int");
+    case TYPE_C_LONG:
+        return xstrdup("long");
+    case TYPE_C_ULONG:
+        return xstrdup("unsigned long");
+    case TYPE_C_SHORT:
+        return xstrdup("short");
+    case TYPE_C_USHORT:
+        return xstrdup("unsigned short");
+    case TYPE_C_CHAR:
+        return xstrdup("char");
+    case TYPE_C_UCHAR:
+        return xstrdup("unsigned char");
+
+    case TYPE_INT:
+        // 'int' in Zen C maps to 'i32' now for portability.
+        // FFI should use c_int.
+        return xstrdup("int32_t");
     case TYPE_FLOAT:
         return xstrdup("float");
+    case TYPE_BITINT:
+    {
+        char *res = xmalloc(32);
+        sprintf(res, "_BitInt(%d)", t->array_size);
+        return res;
+    }
+    case TYPE_UBITINT:
+    {
+        char *res = xmalloc(40);
+        sprintf(res, "unsigned _BitInt(%d)", t->array_size);
+        return res;
+    }
 
     case TYPE_POINTER:
     {
@@ -480,8 +562,11 @@ static char *type_to_c_string_impl(Type *t)
             return res;
         }
 
-        char *res = xmalloc(strlen(inner) + 7);
-        sprintf(res, "Slice_%s", inner);
+        char *inner_zens = type_to_string(t->inner);
+        char *res = xmalloc(strlen(inner_zens) + 7);
+        sprintf(res, "Slice_%s", inner_zens);
+        free(inner_zens);
+        free(inner);
         return res;
     }
 
@@ -522,7 +607,15 @@ static char *type_to_c_string_impl(Type *t)
         return xstrdup("z_closure_T");
 
     case TYPE_GENERIC:
-        return xstrdup(t->name);
+        // Use type_to_string to get the mangled name (e.g. Option_int) instead of raw C string
+        // composition This ensures consistency with struct definitions.
+        {
+            char *s = type_to_string(t);
+            return s;
+        }
+
+    case TYPE_ALIAS:
+        return type_to_c_string(t->inner);
 
     case TYPE_ENUM:
         return xstrdup(t->name);

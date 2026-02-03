@@ -55,6 +55,28 @@ impl String {
         }
     }
 
+    fn append_c(self, s: char*) {
+        if (self.vec.len > 0) {
+            self.vec.len = self.vec.len - 1;
+        }
+        let len = strlen(s);
+        for (let i = 0; i < len; i = i + 1) {
+            self.vec.push(s[i]);
+        }
+        self.vec.push(0);
+    }
+
+    fn append_c_ptr(ptr: String*, s: char*) {
+        if (ptr.vec.len > 0) {
+            ptr.vec.len = ptr.vec.len - 1;
+        }
+        let len = strlen(s);
+        for (let i = 0; i < len; i = i + 1) {
+            ptr.vec.push(s[i]);
+        }
+        ptr.vec.push(0);
+    }
+
     fn add(self, other: String*) -> String {
         let new_s = String::from(self.c_str());
         new_s.append(other);
@@ -68,7 +90,8 @@ impl String {
     }
 
     fn eq(self, other: String*) -> bool {
-        return strcmp(self.c_str(), (*other).c_str()) == 0;
+        let zero: c_int = 0;
+        return strcmp(self.c_str(), (*other).c_str()) == zero;
     }
 
     fn length(self) -> usize {
@@ -124,7 +147,8 @@ impl String {
     fn starts_with(self, prefix: char*) -> bool {
         let plen = strlen(prefix);
         if plen > self.length() { return false; }
-        return strncmp(self.c_str(), prefix, plen) == 0;
+        let zero: c_int = 0;
+        return strncmp(self.c_str(), prefix, plen) == zero;
     }
     
     fn ends_with(self, suffix: char*) -> bool {
@@ -132,7 +156,8 @@ impl String {
         let len = self.length();
         if slen > len { return false; }
         let offset = (int)(len - slen);
-        return strcmp(self.c_str() + offset, suffix) == 0;
+        let zero: c_int = 0;
+        return strcmp(self.c_str() + offset, suffix) == zero;
     }
     
     fn free(self) {

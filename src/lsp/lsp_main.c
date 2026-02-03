@@ -1,5 +1,6 @@
 
 #include "json_rpc.h"
+#include "zprep.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,6 +12,7 @@ int lsp_main(int argc, char **argv)
     (void)argc;
     (void)argv;
     fprintf(stderr, "zls: Zen Language Server starting...\n");
+    g_config.mode_lsp = 1;
 
     while (1)
     {
@@ -31,12 +33,17 @@ int lsp_main(int argc, char **argv)
 
         if (content_len <= 0)
         {
-            // Maybe EOF or error?
             if (feof(stdin))
             {
                 break;
             }
-            continue; // Wait for more (yeah we gotta work on this).
+            continue;
+        }
+
+        if (content_len > 10 * 1024 * 1024)
+        {
+            fprintf(stderr, "zls: Content-Length too large (%d)\n", content_len);
+            break;
         }
 
         // Read body.

@@ -12,6 +12,114 @@
 #include "zprep_plugin.h"
 #include "../codegen/codegen.h"
 
+extern char *g_current_filename;
+
+/**
+ * @brief Auto-imports std/mem.zc if not already imported.
+ *
+ * This is called when the Drop trait is used (impl Drop for X).
+ */
+static void auto_import_std_mem(ParserContext *ctx)
+{
+    // Check if Drop trait is already registered (means mem.zc was imported)
+    if (check_impl(ctx, "Drop", "__trait_marker__"))
+    {
+        // Check_impl returns 0 if not found, but we need a different check
+        // Let's check if we can find any indicator that mem.zc was loaded
+    }
+
+    // Try to find and import std/mem.zc
+    static const char *std_paths[] = {"std/mem.zc", "./std/mem.zc", NULL};
+    static const char *system_paths[] = {"/usr/local/share/zenc", "/usr/share/zenc", NULL};
+
+    char resolved_path[1024];
+    int found = 0;
+
+    // First, try relative to current file
+    if (g_current_filename)
+    {
+        char *current_dir = xstrdup(g_current_filename);
+        char *last_slash = strrchr(current_dir, '/');
+        if (last_slash)
+        {
+            *last_slash = 0;
+            snprintf(resolved_path, sizeof(resolved_path), "%s/std/mem.zc", current_dir);
+            if (access(resolved_path, R_OK) == 0)
+            {
+                found = 1;
+            }
+        }
+        free(current_dir);
+    }
+
+    // Try relative paths
+    if (!found)
+    {
+        for (int i = 0; std_paths[i] && !found; i++)
+        {
+            if (access(std_paths[i], R_OK) == 0)
+            {
+                strncpy(resolved_path, std_paths[i], sizeof(resolved_path) - 1);
+                resolved_path[sizeof(resolved_path) - 1] = '\0';
+                found = 1;
+            }
+        }
+    }
+
+    // Try system paths
+    if (!found)
+    {
+        for (int i = 0; system_paths[i] && !found; i++)
+        {
+            snprintf(resolved_path, sizeof(resolved_path), "%s/std/mem.zc", system_paths[i]);
+            if (access(resolved_path, R_OK) == 0)
+            {
+                found = 1;
+            }
+        }
+    }
+
+    if (!found)
+    {
+        return; // Could not find std/mem.zc
+    }
+
+    // Canonicalize path
+    char *real_fn = realpath(resolved_path, NULL);
+    if (real_fn)
+    {
+        strncpy(resolved_path, real_fn, sizeof(resolved_path) - 1);
+        resolved_path[sizeof(resolved_path) - 1] = '\0';
+        free(real_fn);
+    }
+
+    // Check if already imported
+    if (is_file_imported(ctx, resolved_path))
+    {
+        return;
+    }
+    mark_file_imported(ctx, resolved_path);
+
+    // Load and parse the file
+    char *src = load_file(resolved_path);
+    if (!src)
+    {
+        return; // Could not load file
+    }
+
+    Lexer i;
+    lexer_init(&i, src);
+
+    // Save and restore filename context
+    char *saved_fn = g_current_filename;
+    g_current_filename = resolved_path;
+
+    // Parse the mem module contents
+    parse_program_nodes(ctx, &i);
+
+    g_current_filename = saved_fn;
+}
+
 // Trait Parsing
 ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
 {
@@ -100,7 +208,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         char **param_names = NULL;
         int is_varargs = 0;
         char *args = parse_and_convert_args(ctx, l, &defaults, &arg_count, &arg_types, &param_names,
-                                            &is_varargs);
+                                            &is_varargs, NULL);
 
         char *ret = xstrdup("void");
         if (lexer_peek(l).type == TOK_ARROW)
@@ -149,6 +257,7 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
     }
 
     register_trait(name);
+    add_to_global_list(ctx, n_node); // Track for codegen (VTable emission)
     return n_node;
 }
 
@@ -204,6 +313,22 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
                 zpanic_at(lexer_peek(l), "Expected > in impl struct generic");
             }
             register_generic(ctx, target_gen_param);
+        }
+
+        // Check for common error: swapped Struct and Trait
+        // impl MyStruct for MyTrait (Wrong) vs impl MyTrait for MyStruct (Correct)
+        if (!is_trait(name1) && is_trait(name2))
+        {
+            zpanic_at(t1,
+                      "Incorrect usage of impl. Did you mean 'impl %s for %s'? Syntax is 'impl "
+                      "<Trait> for <Struct>'",
+                      name2, name1);
+        }
+
+        // Auto-import std/mem.zc if implementing Drop, Copy, or Clone traits
+        if (strcmp(name1, "Drop") == 0 || strcmp(name1, "Copy") == 0 || strcmp(name1, "Clone") == 0)
+        {
+            auto_import_std_mem(ctx);
         }
 
         register_impl(ctx, name1, name2);
@@ -652,7 +777,7 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
     }
 }
 
-ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
+ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque)
 {
 
     lexer_next(l); // eat struct or union
@@ -705,6 +830,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
         n->strct.is_union = is_union;
         n->strct.fields = NULL;
         n->strct.is_incomplete = 1;
+        n->strct.is_opaque = is_opaque;
 
         return n;
     }
@@ -747,7 +873,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
                 Token field_name = lexer_next(l);
                 lexer_next(l); // eat :
                 Type *ft = parse_type_formal(ctx, l);
-                char *field_type_str = type_to_string(ft);
+                char *field_type_str = type_to_c_string(ft);
                 expect(l, TOK_SEMICOLON, "Expected ;");
 
                 ASTNode *nf = ast_create(NODE_FIELD);
@@ -800,10 +926,6 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
                     ASTNode *nf = ast_create(NODE_FIELD);
                     nf->field.name = xstrdup(f->field.name);
                     nf->field.type = xstrdup(f->field.type);
-                    // Copy type info? Ideally deep copy or ref
-                    // For now, we leave it NULL or shallow copy if needed, but mixins usually
-                    // aren't generic params themselves in the same way.
-                    // Let's shallow copy for safety if it exists.
                     nf->type_info = f->type_info;
 
                     if (!h)
@@ -829,14 +951,13 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
             free(use_name);
             continue;
         }
-        // ---------------------------------------
 
         if (t.type == TOK_IDENT)
         {
             Token f_name = lexer_next(l);
             expect(l, TOK_COLON, "Expected :");
             Type *ft = parse_type_formal(ctx, l);
-            char *f_type = type_to_string(ft);
+            char *f_type = type_to_c_string(ft);
 
             ASTNode *f = ast_create(NODE_FIELD);
             f->field.name = token_strdup(f_name);
@@ -904,8 +1025,10 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union)
     node->strct.generic_params = gps;
     node->strct.generic_param_count = gp_count;
     node->strct.is_union = is_union;
+    node->strct.is_opaque = is_opaque;
     node->strct.used_structs = temp_used_structs;
     node->strct.used_struct_count = temp_used_count;
+    node->strct.defined_in_file = g_current_filename ? xstrdup(g_current_filename) : NULL;
 
     if (gp_count > 0)
     {
@@ -1007,7 +1130,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l)
                     while (lexer_peek(l).type == TOK_COMMA)
                     {
                         lexer_next(l); // eat ,
-                        strcat(sig, "_");
+                        strcat(sig, "__");
                         Type *next_t = parse_type_obj(ctx, l);
                         char *ns = type_to_string(next_t);
                         if (strlen(sig) + strlen(ns) + 2 > 510)
@@ -1102,7 +1225,7 @@ ASTNode *parse_enum(ParserContext *ctx, Lexer *l)
     node->enm.name = ename;
 
     node->enm.variants = h;
-    node->enm.generic_param = gp; // 3. Store generic param
+    node->enm.generic_param = gp; // Store generic param
 
     if (gp)
     {

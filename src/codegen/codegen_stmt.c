@@ -750,7 +750,7 @@ void codegen_node_single(ParserContext *ctx, ASTNode *node, FILE *out)
         {
             fprintf(out, "inline ");
         }
-        emit_func_signature(out, node, NULL);
+        emit_func_signature(ctx, out, node, NULL);
         fprintf(out, "\n");
         fprintf(out, "{\n");
         char *prev_ret = g_current_func_ret_type;
