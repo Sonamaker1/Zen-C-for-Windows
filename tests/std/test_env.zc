@@ -1,4 +1,4 @@
-import "std.zc"
+//import "std.zc"
 import "std/env.zc"
 
 test "test_std_env_set_and_get" {

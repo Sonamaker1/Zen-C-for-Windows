@@ -5,34 +5,19 @@ import "./mem.zc";
 import "./string.zc";
 import "./option.zc";
 
-include <stdio.h>
-include <stdlib.h>
+import "sys/process.zc";
 
 // system() can be externed directly with const char*
 extern fn system(command: const char*) -> c_int;
 
-// Minimal raw block: only for opaque FILE* types
-// popen/pclose/fgets use FILE* which conflicts with void*
-raw {
-    void *_z_popen(const char *command, const char *type) {
-        return (void *)popen(command, type);
-    }
-    
-    int _z_pclose(void *stream) {
-        return pclose((FILE *)stream);
-    }
-    
-    char *_z_fgets(char *s, int size, void *stream) {
-        return fgets(s, size, (FILE *)stream);
-    }
-}
+
 
 extern fn _z_popen(command: const char*, type: const char*) -> void*;
 extern fn _z_pclose(stream: void*) -> c_int;
 extern fn _z_fgets(s: char*, size: c_int, stream: void*) -> char*;
 
 struct Output {
-    stdout: String;
+    std_out: String;
     exit_code: int;
 }
 
@@ -78,7 +63,7 @@ impl Command {
             cmd_str.free();
             // TODO: Better error handling...
             return Output { 
-                stdout: String::from(""), 
+                std_out: String::from(""), 
                 exit_code: -1 
             };
         }
@@ -101,7 +86,7 @@ impl Command {
         cmd_str.free();
         
         return Output {
-            stdout: out,
+            std_out: out,
             exit_code: code
         };
     }
@@ -131,6 +116,6 @@ impl Drop for Command {
 
 impl Drop for Output {
     fn drop(self) {
-        self.stdout.free();
+        self.std_out.free();
     }
 }

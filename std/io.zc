@@ -91,7 +91,8 @@ fn readln() -> char* {
 
     while (true) {
         c = _z_fgetc(std_in);
-        let eof_c: c_int = Z_EOF;
+        // Explicit cast to avoid -1 becoming UINT64_MAX in some contexts if treated as unsigned
+        let eof_c: c_int = -1; 
         if (c == eof_c) break;
         let nl_c: c_int = 10;
         if (c == nl_c) break; // '\n'
@@ -118,4 +119,27 @@ fn readln() -> char* {
     
     line[len] = 0;
     return line;
+}
+
+// Integer to string conversion
+// Returns a static buffer - NOT thread-safe, use itos_new for heap allocation
+fn itos(n: int) -> char* {
+    static let buffer: char[32];
+    sprintf((char*)buffer, "%d", n);
+    return (char*)buffer;
+}
+
+// Heap-allocated integer to string - caller must free
+fn itos_new(n: int) -> char* {
+    let buffer: char* = malloc(32);
+    if (buffer == NULL) return NULL;
+    sprintf(buffer, "%d", n);
+    return buffer;
+}
+
+// Unsigned integer to string
+fn utos(n: uint) -> char* {
+    static let buffer: char[32];
+    sprintf((char*)buffer, "%u", n);
+    return (char*)buffer;
 }

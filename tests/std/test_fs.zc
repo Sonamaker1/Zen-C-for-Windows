@@ -1,4 +1,4 @@
-import "std.zc"
+//import "std.zc"
 import "std/path.zc"
 import "std/fs.zc"
 

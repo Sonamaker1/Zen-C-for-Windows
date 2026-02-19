@@ -1,4 +1,12 @@
-import "std.zc"
+//import "std.zc"
+import "std/fs.zc"
+import "std/json.zc"
+import "std/map.zc"
+import "std/option.zc"
+import "std/string.zc"
+import "std/core.zc"
+import "std/vec.zc"
+import "std/time.zc"
 
 test "test_std_expansion" {
     "Testing Standard Library Expansion...";

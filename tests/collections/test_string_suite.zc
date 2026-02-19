@@ -1,7 +1,13 @@
 
 include <string.h>
 include <stdio.h>
-import "std.zc"
+//import "std.zc"
+import "std/string.zc"
+import "std/option.zc"
+fn doAssert(b:bool, msg: string) -> int {
+    assert b;
+    println "{msg}"; 
+}
 
 test "test_string_methods" {
     println "Testing String methods...";

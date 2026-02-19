@@ -1,4 +1,18 @@
-include <regex.h>
+include "std/third-party/tre/include/tre.h"
+include "std/third-party/tre/include/config.h"
+include "std/third-party/tre/include/tre-config.h"
+//> define USE_LOCAL_TRE_H=1
+raw {
+    // Include TRE implementation for static linking
+    #if defined(_WIN32)
+
+      // Windows (MSVC) needs full source inclusion as linking .o files is hard
+      #include "std/third-party/tre/tre_full.c"
+    #else
+      // Linux/macOS/MinGW: Link against object files in Makefile
+      // #include "std/third-party/tre/tre_full.c"
+    #endif
+}
 
 import "./core.zc"
 import "./string.zc"
@@ -11,13 +25,21 @@ struct Match {
     len: int;
 }
 
+struct ZRegMatch {
+    rm_so: int;
+    rm_eo: int;
+}
+
 impl Match {
     fn new(text: char*, start: int, len: int) -> Match {
         return Match { text: text, start: start, len: len };
     }
 
     fn as_string(self) -> char* {
-        return self.text;
+        let s: char* = malloc(self.len + 1);
+        memcpy(s, self.text + self.start, self.len);
+        s[self.len] = 0;
+        return s;
     }
 
     fn end(self) -> int {
@@ -38,7 +60,7 @@ impl Regex {
 
     fn compile_with_flags(pattern: char*, flags: int) -> Regex {
         let preg = malloc(1024);
-        let status = regcomp(preg, pattern, flags);
+        let status = tre_regcomp(preg, pattern, flags);
         if (status != 0) {
             free(preg);
             return Regex { preg: 0, pattern: 0, flags: flags };
@@ -52,7 +74,7 @@ impl Regex {
 
     fn match(self, text: char*) -> bool {
         if (self.preg == 0) { return false; }
-        return regexec(self.preg, text, 0, 0, 0) == 0;
+        return tre_regexec(self.preg, text, 0, 0, 0) == 0;
     }
 
     fn match_full(self, text: char*) -> bool {
@@ -63,7 +85,7 @@ impl Regex {
         if (self.preg == 0) { return false; }
         let len = strlen(text);
         if (offset < 0 || offset > len) { return false; }
-        return regexec(self.preg, text + offset, 0, 0, 0) == 0;
+        return tre_regexec(self.preg, text + offset, 0, 0, 0) == 0;
     }
 
     fn is_match(self, text: char*) -> bool {
@@ -72,16 +94,13 @@ impl Regex {
 
     fn find(self, text: char*) -> Option<Match> {
         if (self.preg == 0) { return Option<Match>::None(); }
-        let t_len = strlen(text);
-        for (let i = 0; i <= t_len; i = i + 1) {
-            let sub = text + i;
-            if (regexec(self.preg, sub, 0, 0, 0) == 0) {
-                let j = 0;
-                while (text[i + j] != 0 && regexec(self.preg, sub, 0, 0, 0) == 0) {
-                    j = j + 1;
-                    sub = text + i + j;
-                }
-                return Option<Match>::Some(Match::new(text + i, i, j));
+        
+        let pmatch: ZRegMatch[1];
+        if (tre_regexec(self.preg, text, 1, (void*)pmatch, 0) == 0) {
+            let start = pmatch[0].rm_so;
+            let end = pmatch[0].rm_eo;
+            if (start != -1) {
+                return Option<Match>::Some(Match::new(text, start, end - start));
             }
         }
         return Option<Match>::None();
@@ -102,7 +121,7 @@ impl Regex {
         let t_len = strlen(text);
         while (pos < t_len) {
             let sub = text + pos;
-            if (regexec(self.preg, sub, 0, 0, 0) == 0) {
+            if (tre_regexec(self.preg, sub, 0, 0, 0) == 0) {
                 count = count + 1;
                 pos = pos + 1;
             } else {
@@ -123,7 +142,7 @@ impl Regex {
         let pos = 0;
         while (pos < t_len) {
             let sub = text + pos;
-            if (regexec(self.preg, sub, 0, 0, 0) == 0) {
+            if (tre_regexec(self.preg, sub, 0, 0, 0) == 0) {
                 if (pos > last_pos) {
                     let before = text + last_pos;
                     let part_len = pos - last_pos;
@@ -163,7 +182,7 @@ impl Regex {
 
     fn destroy(self) {
         if (self.preg != 0) {
-            regfree(self.preg);
+            tre_regfree(self.preg);
             free(self.preg);
         }
     }
