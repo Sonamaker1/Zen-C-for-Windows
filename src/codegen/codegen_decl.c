@@ -40,6 +40,47 @@ static void emit_freestanding_preamble(FILE *out)
     // Most primitives (integers, pointers) work without them.
 }
 
+void emit_windows_preamble(FILE *out)
+{
+    fputs("#pragma once\n", out);
+
+    // Cross-platform "POSIX-ish" file descriptor helpers used by codegen.
+    // Provides: dup, dup2, open, close, STDOUT_FILENO, O_WRONLY, ZC_DEVNULL
+
+    fputs("#if defined(_WIN32) || defined(_WIN64)\n", out);
+    fputs("    #ifndef _CRT_SECURE_NO_WARNINGS\n", out);
+    fputs("    #define _CRT_SECURE_NO_WARNINGS\n", out);
+    fputs("    #endif\n", out);
+
+    fputs("    #include <io.h>      // _dup, _dup2, _close, _fileno\n", out);
+    fputs("    #include <fcntl.h>   // _open, O_WRONLY, etc.\n", out);
+
+        // Map POSIX-ish names to MSVCRT
+    fputs("    #define dup  _dup\n", out);
+    fputs("    #define dup2 _dup2\n", out);
+    fputs("    #define open _open\n", out);
+    fputs("    #define close _close\n", out);
+
+        // STDOUT_FILENO doesn't exist on Windows in the same way; use fileno(stdout)
+    fputs("    #ifndef STDOUT_FILENO\n", out);
+    fputs("    #define STDOUT_FILENO (_fileno(stdout))\n", out);
+    fputs("    #endif\n", out);
+
+        // Windows "null device"
+    fputs("    #ifndef ZC_DEVNULL\n", out);
+    fputs("    #define ZC_DEVNULL \"NUL\"\n", out);
+    fputs("    #endif\n", out);
+
+    fputs("#else\n", out);
+    fputs("    #include <unistd.h>\n", out);
+    fputs("    #include <fcntl.h>\n", out);
+
+    fputs("    #ifndef ZC_DEVNULL\n", out);
+    fputs("    #define ZC_DEVNULL \"/dev/null\"\n", out);
+    fputs("    #endif\n", out);
+    fputs("#endif\n", out);
+}
+
 void emit_preamble(ParserContext *ctx, FILE *out)
 {
     if (g_config.is_freestanding)
@@ -55,11 +96,12 @@ void emit_preamble(ParserContext *ctx, FILE *out)
               "<stddef.h>\n#include <string.h>\n",
               out);
         fputs("#include <stdarg.h>\n#include <stdint.h>\n#include <stdbool.h>\n", out);
-        fputs("#include <unistd.h>\n#include <fcntl.h>\n", out); // POSIX functions
+        fputs("#if (!_WIN32)\n#include <unistd.h>\n#include <fcntl.h>\n#endif\n", out); // POSIX functions
 
         // C++ compatibility
         if (g_config.use_cpp)
         {
+            emit_windows_preamble(out);
             // For C++: define ZC_AUTO as auto, include compat.h macros inline
             fputs("#define ZC_AUTO auto\n", out);
             fputs("#define ZC_AUTO_INIT(var, init) auto var = (init)\n", out);
@@ -203,7 +245,7 @@ void emit_preamble(ParserContext *ctx, FILE *out)
         fputs("void _z_suppress_stdout() {\n", out);
         fputs("    fflush(stdout);\n", out);
         fputs("    if (_z_orig_stdout == -1) _z_orig_stdout = dup(STDOUT_FILENO);\n", out);
-        fputs("    int nullfd = open(\"/dev/null\", O_WRONLY);\n", out);
+        fputs("    int nullfd = open(ZC_DEVNULL, O_WRONLY);\n", out);
         fputs("    dup2(nullfd, STDOUT_FILENO);\n", out);
         fputs("    close(nullfd);\n", out);
         fputs("}\n", out);

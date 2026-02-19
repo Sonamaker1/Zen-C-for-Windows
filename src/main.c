@@ -7,11 +7,22 @@
 #include "analysis/typecheck.h"
 #include "codegen/compat.h"
 #include <stdio.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(_WIN32)
+#include <stdarg.h>
+#include <io.h>
+#define access _access
+#define F_OK 0
+#else
 #include <unistd.h>
+#endif
+
 #include "utils/cmd.h"
+
 
 // Forward decl for LSP
 int lsp_main(int argc, char **argv);
@@ -56,7 +67,7 @@ void print_usage()
     printf("  " COLOR_CYAN "--keep-comments" COLOR_RESET " Preserve comments in output C\n");
     printf("  " COLOR_CYAN "--freestanding" COLOR_RESET "  Freestanding mode (no stdlib)\n");
     printf("  " COLOR_CYAN "--cc" COLOR_RESET
-           " <compiler> C compiler to use (gcc, clang, tcc, zig)\n");
+        " <compiler> C compiler to use (gcc, clang, tcc, zig, zig++)\n");
     printf("  " COLOR_CYAN "--typecheck" COLOR_RESET "     Enable semantic analysis\n");
     printf("  " COLOR_CYAN "--json" COLOR_RESET "          Emit diagnostics as JSON\n");
     printf("  " COLOR_CYAN "--no-zen" COLOR_RESET "        Disable Zen facts\n");
@@ -65,7 +76,74 @@ void print_usage()
     printf("  " COLOR_CYAN "--cuda" COLOR_RESET "          Use CUDA mode (requires nvcc)\n");
     printf("  " COLOR_CYAN "--help" COLOR_RESET "          Print this help message\n");
     printf("  " COLOR_CYAN "--version" COLOR_RESET "       Print version information\n");
+
+#if defined(_WIN32)
+    printf("  " COLOR_CYAN "--msvc" COLOR_RESET "          (Windows + --cpp) Use MSVC ABI/headers/libs with zig c++\n");
+    printf("  " COLOR_CYAN "--msvc-root" COLOR_RESET " <p>     Override MSVC root (...\\VC\\Tools\\MSVC\\<version>)\n");
+    printf("  " COLOR_CYAN "--win-kits-root" COLOR_RESET " <p> Override Windows Kits root (...\\Windows Kits\\10)\n");
+    printf("  " COLOR_CYAN "--win-sdk-ver" COLOR_RESET " <v>   Override Windows SDK version (eg 10.0.26100.0)\n");
+#endif
 }
+
+#if defined(_WIN32)
+static void appendf(char *dst, size_t cap, const char *fmt, ...)
+{
+    size_t len = strlen(dst);
+    if (len >= cap)
+        return;
+
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(dst + len, cap - len, fmt, ap);
+    va_end(ap);
+}
+
+static void zc_add_msvc_toolchain_flags(
+    char *cflags, size_t cflags_cap,
+    char *linkflags, size_t linkflags_cap,
+    const char *msvc_root,
+    const char *win_kits_root,
+    const char *win_sdk_ver)
+{
+    // MSVC / Windows SDK computed paths (x64)
+    char msvc_inc[512];
+    char msvc_lib[512];
+    char sdk_inc_um[512];
+    char sdk_inc_shared[512];
+    char sdk_inc_ucrt[512];
+    char sdk_inc_winrt[512];
+    char sdk_lib_um[512];
+    char sdk_lib_ucrt[512];
+
+    snprintf(msvc_inc, sizeof(msvc_inc), "%s\\include", msvc_root);
+    snprintf(msvc_lib, sizeof(msvc_lib), "%s\\lib\\x64", msvc_root);
+
+    snprintf(sdk_inc_um, sizeof(sdk_inc_um), "%s\\Include\\%s\\um", win_kits_root, win_sdk_ver);
+    snprintf(sdk_inc_shared, sizeof(sdk_inc_shared), "%s\\Include\\%s\\shared", win_kits_root, win_sdk_ver);
+    snprintf(sdk_inc_ucrt, sizeof(sdk_inc_ucrt), "%s\\Include\\%s\\ucrt", win_kits_root, win_sdk_ver);
+    snprintf(sdk_inc_winrt, sizeof(sdk_inc_winrt), "%s\\Include\\%s\\winrt", win_kits_root, win_sdk_ver);
+
+    snprintf(sdk_lib_um, sizeof(sdk_lib_um), "%s\\Lib\\%s\\um\\x64", win_kits_root, win_sdk_ver);
+    snprintf(sdk_lib_ucrt, sizeof(sdk_lib_ucrt), "%s\\Lib\\%s\\ucrt\\x64", win_kits_root, win_sdk_ver);
+
+    // cflags
+    appendf(cflags, cflags_cap, " -target x86_64-windows-msvc");
+    appendf(cflags, cflags_cap, " -std=c++20");
+    appendf(cflags, cflags_cap, " -nostdinc++");
+    
+    // (optionally omit -D_DLL/-D_MT and let zig pick)
+
+    // linkflags
+    appendf(linkflags, linkflags_cap, " -L\"%s\"", msvc_lib);
+    appendf(linkflags, linkflags_cap, " -L\"%s\"", sdk_lib_um);
+    appendf(linkflags, linkflags_cap, " -L\"%s\"", sdk_lib_ucrt);
+
+    // DO NOT add -lucrt/-lvcruntime/-lmsvcrt here
+    
+    appendf(linkflags, linkflags_cap, " -lmsvcprt -llegacy_stdio_definitions");
+    appendf(linkflags, linkflags_cap, " -lkernel32 -luser32 -ladvapi32 -lntdll");
+}
+#endif
 
 void build_compile_command(char *cmd, size_t cmd_size, const char *outfile,
                            const char *temp_source_file, const char *extra_c_sources)
@@ -183,6 +261,15 @@ int main(int argc, char **argv)
         strcpy(g_config.cc, "gcc");
     }
 
+#if defined(_WIN32)
+    int use_msvc_toolchain = 0;
+
+    // Defaults (override via flags)
+    const char *msvc_root = "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207";
+    const char *win_kits_root = "C:\\Program Files (x86)\\Windows Kits\\10";
+    const char *win_sdk_ver = "10.0.26100.0";
+#endif
+
     if (argc < 2)
     {
         print_usage();
@@ -293,7 +380,11 @@ int main(int argc, char **argv)
         }
         else if (strcmp(arg, "--cpp") == 0)
         {
+#if defined(_WIN32)
+            strcpy(g_config.cc, "zig c++");
+#else
             strcpy(g_config.cc, "g++");
+#endif
             g_config.use_cpp = 1;
         }
         else if (strcmp(arg, "--cuda") == 0)
@@ -315,10 +406,14 @@ int main(int argc, char **argv)
             if (i + 1 < argc)
             {
                 char *cc_arg = argv[++i];
-                // Handle "zig" shorthand for "zig cc"
+                // Handle shorthands
                 if (strcmp(cc_arg, "zig") == 0)
                 {
                     strcpy(g_config.cc, "zig cc");
+                }
+                else if (strcmp(cc_arg, "zig++") == 0)
+                {
+                    strcpy(g_config.cc, "zig c++");
                 }
                 else
                 {
@@ -326,6 +421,24 @@ int main(int argc, char **argv)
                 }
             }
         }
+#if defined(_WIN32)
+        else if (strcmp(arg, "--msvc") == 0)
+        {
+            use_msvc_toolchain = 1;
+        }
+        else if (strcmp(arg, "--msvc-root") == 0 && i + 1 < argc)
+        {
+            msvc_root = argv[++i];
+        }
+        else if (strcmp(arg, "--win-kits-root") == 0 && i + 1 < argc)
+        {
+            win_kits_root = argv[++i];
+        }
+        else if (strcmp(arg, "--win-sdk-ver") == 0 && i + 1 < argc)
+        {
+            win_sdk_ver = argv[++i];
+        }
+#endif
         else if (strcmp(arg, "-o") == 0)
         {
             if (i + 1 < argc)
@@ -610,6 +723,17 @@ int main(int argc, char **argv)
         strcat(extra_c_sources, g_config.c_files[i]);
     }
 
+ #if defined(_WIN32)
+    // Apply MSVC toolchain flags if requested and we're in C++ mode.
+    // Intended for: zig c++ + prebuilt MSVC-ABI libraries.
+    if (use_msvc_toolchain && g_config.use_cpp)
+    {
+        zc_add_msvc_toolchain_flags(
+            g_config.gcc_flags, sizeof(g_config.gcc_flags),
+            g_link_flags, sizeof(g_link_flags),
+            msvc_root, win_kits_root, win_sdk_ver);
+    }
+#endif
     // Build command
     build_compile_command(cmd, sizeof(cmd), outfile, temp_source_file, extra_c_sources);
 
