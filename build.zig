@@ -45,6 +45,7 @@ pub fn build(b: *std.Build) void {
         "src/utils/utils.c",
         "src/utils/path_utils.c",
         "src/utils/zc_path_resolve.c",
+        "src/utils/cmd.c",
         "src/lexer/token.c",
         "src/analysis/typecheck.c",
         "src/analysis/move_check.c",
