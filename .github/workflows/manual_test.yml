@@ -81,7 +81,7 @@ jobs:
           fi
           
           if [ "$TEST_TARGET" = "all" ]; then
-             ./tests/scripts/run_tests.sh --cc $COMPILER $TRE_FLAGS
+              ./tests/scripts/run_tests.sh --cc $COMPILER
           else
              if [ ! -f "$TEST_TARGET" ]; then
                 echo "Error: Test file '$TEST_TARGET' not found."
@@ -89,5 +89,5 @@ jobs:
                 find tests -name "*.zc"
                 exit 1
              fi
-             $ZC_BIN run "$TEST_TARGET" --cc $COMPILER $FLAGS $TRE_FLAGS
+             $ZC_BIN run "$TEST_TARGET" --cc $COMPILER $FLAGS
           fi

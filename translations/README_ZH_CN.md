@@ -72,7 +72,11 @@
         <li><a href="#社区">社区</a></li>
         <li><a href="#快速入门">快速入门</a></li>
         <li><a href="#标准库">标准库</a></li>
-        <li><a href="#工具链">工具链</a></li>
+        <li><a href="#工具链">工具链</a>
+          <ul>
+            <li><a href="#语言服务器协议-lsp">LSP</a></li>
+          </ul>
+        </li>
         <li><a href="#编译器支持与兼容性">编译器支持与兼容性</a></li>
         <li><a href="#贡献">贡献</a></li>
         <li><a href="#致谢与归属">致谢与归属</a></li>
@@ -1361,6 +1365,15 @@ zc repl
 
 ---
 
+
+### 语言服务器协议 (LSP)
+
+Zen C 包含一个内置的语言服务器，用于编辑器集成。
+
+- **[安装与设置指南](translations/LSP_ZH_CN.md)**
+- **支持的编辑器**: VS Code, Neovim, Vim, Zed, 以及任何支持 LSP 的编辑器。
+
+使用 `zc lsp` 启动服务器。
 
 ## 编译器支持与兼容性
 

@@ -27,3 +27,5 @@ docs/latex/
 /.zig-cache
 !tests/modules/brainfuck.dll
 *.pdb
+build_dir_env.txt 
+build_dir_linux.txt

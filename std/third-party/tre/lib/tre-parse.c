@@ -246,7 +246,7 @@ tre_ctype_t tre_ctype(const char *name)
 #define MAX_NEG_CLASSES 64
 
 /* Maximum length of character class names. */
-#define MAX_CLASS_NAME
+#define TRE_MAX_CLASS_NAME
 
 #define REST(re) (int)(ctx->re_end - (re)), (re)
 

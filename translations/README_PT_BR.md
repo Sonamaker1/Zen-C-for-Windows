@@ -72,7 +72,11 @@ Confira estes projetos construídos com Zen C:
         <li><a href="#comunidade">Comunidade</a></li>
         <li><a href="#início-rápido">Início Rápido</a></li>
         <li><a href="#biblioteca-padrão">Biblioteca Padrão</a></li>
-        <li><a href="#ferramentas">Ferramentas</a></li>
+        <li><a href="#ferramentas">Ferramentas</a>
+          <ul>
+            <li><a href="#protocolo-de-servidor-de-linguagem-lsp">LSP</a></li>
+          </ul>
+        </li>
         <li><a href="#suporte-de-compiladores--compatibilidade">Suporte de Compiladores</a></li>
         <li><a href="#contribuindo">Contribuindo</a></li>
         <li><a href="#atribuições">Atribuições</a></li>
@@ -1356,6 +1360,15 @@ O Read-Eval-Print Loop permite que você experimente seu código Zen C interativ
 | `! <cmd>` | Executa um comando shell (e.g. `!ls`). |
 
 ---
+
+### Protocolo de Servidor de Linguagem (LSP)
+
+O Zen C inclui um Servidor de Linguagem integrado para integração com editores.
+
+- **[Guia de Instalação e Configuração](translations/LSP_PT_BR.md)**
+- **Editores Suportados**: VS Code, Neovim, Vim, Zed, e qualquer editor capaz de LSP.
+
+Use `zc lsp` para iniciar o servidor.
 
 ## Suporte de Compiladores & Compatibilidade
 

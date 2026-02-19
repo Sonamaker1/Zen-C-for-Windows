@@ -44,6 +44,7 @@ SRCS = src/main.c \
        src/codegen/codegen_main.c \
        src/codegen/codegen_utils.c \
        src/utils/utils.c \
+       src/utils/cmd.c \
        src/platform/os.c \
        src/platform/console.c \
        src/platform/dylib.c \
@@ -220,23 +221,13 @@ clean:
 	@echo "=> Clean complete!"
 
 # Test
-# Default to linking objects (Linux/macOS)
-TRE_OBJS = -Istd/third-party/tre/include -Istd obj/std/third-party/tre/lib/*.o
-
-# Detect Windows (OS=Windows_NT is standard on Windows)
-ifdef OS
-    ifneq (,$(findstring Windows,$(OS)))
-        TRE_OBJS = -Istd/third-party/tre/include
-    endif
-endif
-
 test: $(TARGET) $(PLUGINS)
-	./tests/scripts/run_tests.sh $(TRE_OBJS)
+	./tests/scripts/run_tests.sh
 	./tests/scripts/run_codegen_tests.sh
 	./tests/scripts/run_example_transpile.sh
 
 test-tcc: $(TARGET) $(PLUGINS)
-	./tests/scripts/run_tests.sh --cc tcc $(TRE_OBJS)
+	./tests/scripts/run_tests.sh --cc tcc
 
 test-lsp: $(TARGET)
 	@echo "=> Building LSP Test Runner"

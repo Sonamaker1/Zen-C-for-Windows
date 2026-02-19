@@ -72,7 +72,11 @@ Check out these projects built with Zen C:
         <li><a href="#community">Community</a></li>
         <li><a href="#quick-start">Quick Start</a></li>
         <li><a href="#standard-library">Standard Library</a></li>
-        <li><a href="#tooling">Tooling</a></li>
+        <li><a href="#tooling">Tooling</a>
+          <ul>
+            <li><a href="#language-server-protocol-lsp">LSP</a></li>
+          </ul>
+        </li>
         <li><a href="#compiler-support--compatibility">Compiler Support & Compatibility</a></li>
         <li><a href="#contributing">Contributing</a></li>
         <li><a href="#attributions">Attributions</a></li>
@@ -1410,6 +1414,15 @@ zc repl
 
 ---
 
+
+### Language Server Protocol (LSP)
+
+Zen C includes a built-in Language Server for editor integration.
+
+- **[Installation & Setup Guide](docs/LSP.md)**
+- **Supported Editors**: VS Code, Neovim, Vim, Zed, and any LSP-capable editor.
+
+Use `zc lsp` to start the server.
 
 ## Compiler Support & Compatibility
 

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include "utils/cmd.h"
 
 // Forward decl for LSP
 int lsp_main(int argc, char **argv);
@@ -69,26 +70,67 @@ void print_usage()
 void build_compile_command(char *cmd, size_t cmd_size, const char *outfile,
                            const char *temp_source_file, const char *extra_c_sources)
 {
+    CmdBuilder cb;
+    cmd_init(&cb);
+
+    // Compiler
+    cmd_add(&cb, g_config.cc);
+
+    // GCC Flags
+    cmd_add(&cb, g_config.gcc_flags);
+    cmd_add(&cb, g_cflags);
+
+    // Freestanding
+    if (g_config.is_freestanding)
+    {
+        cmd_add(&cb, "-ffreestanding");
+    }
+
+    // Quiet
+    if (g_config.quiet)
+    {
+        cmd_add(&cb, "-w");
+    }
+
+    // Output file
+    cmd_add(&cb, "-o");
+    cmd_add(&cb, outfile);
+
+    // Input files
+    cmd_add(&cb, temp_source_file);
+    cmd_add(&cb, extra_c_sources);
+
+    // Platform flags
+    if (!z_is_windows() && !g_config.is_freestanding)
+    {
+        cmd_add(&cb, "-lm");
+        if (g_parser_ctx && g_parser_ctx->has_async)
+        {
+            cmd_add(&cb, "-lpthread");
+        }
+    }
+
+    // Linker flags
+    cmd_add(&cb, g_link_flags);
+    if (z_is_windows())
+    {
+        cmd_add(&cb, "-lws2_32");
+    }
+
+    // Include paths
     char exe_path[8192] = {0};
     z_get_executable_path(exe_path, sizeof(exe_path));
-
-    char std_path[9216] = {0};
-    char config_path[9216] = {0};
-
-    char *last_sep = z_path_last_sep(exe_path);
-    if (last_sep)
-    {
-        *last_sep = 0;
-    }
 
     char dev_std[9000];
     snprintf(dev_std, sizeof(dev_std), "%s/std", exe_path);
 
     if (access(dev_std, F_OK) == 0)
     {
-        snprintf(std_path, sizeof(std_path), "-I\"%s\"", exe_path);
-        snprintf(config_path, sizeof(config_path), "-I\"%s/std/third-party/tre/include\"",
-                 exe_path);
+        cmd_add_fmt(&cb, "-I\"%s\"", exe_path);
+        if (!g_config.is_freestanding)
+        {
+            cmd_add_fmt(&cb, "-I\"%s/std/third-party/tre/include\"", exe_path);
+        }
     }
     else
     {
@@ -97,50 +139,36 @@ void build_compile_command(char *cmd, size_t cmd_size, const char *outfile,
 
         if (access(install_std, F_OK) == 0)
         {
-            snprintf(std_path, sizeof(std_path), "-I\"%s/../share/zenc\"", exe_path);
-            snprintf(config_path, sizeof(config_path),
-                     "-I\"%s/../share/zenc/std/third-party/tre/include\"", exe_path);
+            cmd_add_fmt(&cb, "-I\"%s/../share/zenc\"", exe_path);
+            if (!g_config.is_freestanding)
+            {
+                cmd_add_fmt(&cb, "-I\"%s/../share/zenc/std/third-party/tre/include\"", exe_path);
+            }
         }
         else
         {
-            strcpy(std_path, "-I.");
-            strcpy(config_path, "-I./std/third-party/tre/include");
+            cmd_add(&cb, "-I.");
+            if (!g_config.is_freestanding)
+            {
+                cmd_add(&cb, "-I./std/third-party/tre/include");
+            }
         }
     }
 
-    if (g_config.is_freestanding)
+    // Copy to output buffer
+    if (cb.len < cmd_size)
     {
-        config_path[0] = 0;
+        strcpy(cmd, cb.buf);
+    }
+    else
+    {
+        // Truncate if necessary (though we should avoid this)
+        strncpy(cmd, cb.buf, cmd_size - 1);
+        cmd[cmd_size - 1] = 0;
+        zwarn("Command buffer truncated!");
     }
 
-    const char *math_flag = "-lm";
-    const char *thread_flag = (g_parser_ctx && g_parser_ctx->has_async) ? "-lpthread" : "";
-
-    if (z_is_windows())
-    {
-        math_flag = "";
-        if (g_parser_ctx && g_parser_ctx->has_async)
-        {
-            thread_flag = "";
-        }
-    }
-    else if (g_config.is_freestanding)
-    {
-        math_flag = "";
-        thread_flag = "";
-    }
-
-    char linker_flags[1024] = {0};
-    strcpy(linker_flags, g_link_flags);
-    if (z_is_windows())
-    {
-        strcat(linker_flags, " -lws2_32");
-    }
-
-    snprintf(cmd, cmd_size, "%s %s %s %s %s -o %s %s %s %s %s %s %s %s", g_config.cc,
-             g_config.gcc_flags, g_cflags, g_config.is_freestanding ? "-ffreestanding" : "",
-             g_config.quiet ? "-w" : "", outfile, temp_source_file, extra_c_sources, math_flag,
-             thread_flag, linker_flags, std_path, config_path);
+    cmd_free(&cb);
 }
 
 int main(int argc, char **argv)
