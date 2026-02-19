@@ -29,6 +29,7 @@ typedef enum
 // Main entry points
 // Forward declarations
 struct ParserContext;
+struct MoveState;
 typedef struct ParserContext ParserContext;
 
 /**
@@ -319,6 +320,8 @@ struct ParserContext
     // Config/State
     char *current_impl_struct;     ///< Name of struct currently being implemented (in impl block).
     ASTNode *current_impl_methods; ///< Head of method list for current impl block.
+    int in_method_with_self;       ///< 1 if parsing body of method with self parameter.
+    int self_is_pointer;           ///< 1 if self is a pointer receiver (self*).
 
     // Internal tracking
     DeprecatedFunc *deprecated_funcs; ///< Registry of deprecated functions.
@@ -347,6 +350,9 @@ struct ParserContext
     struct TypeUsage *pending_type_validations; ///< List of types to validate after parsing.
     int is_speculative;  ///< Flag to suppress side effects during speculative parsing.
     int silent_warnings; ///< Suppress warnings (e.g., during codegen interpolation).
+
+    // Flow Analysis (Move Semantics)
+    struct MoveState *move_state;
 };
 
 typedef struct TypeUsage
@@ -383,7 +389,7 @@ int is_token(Token t, const char *s);
 /**
  * @brief Expects a token of a specific type.
  */
-Token expect(Lexer *l, TokenType type, const char *msg);
+Token expect(Lexer *l, ZenTokenType type, const char *msg);
 
 /**
  * @brief Skips comments in the lexer.
@@ -456,6 +462,11 @@ ZenSymbol *find_symbol_entry(ParserContext *ctx, const char *n);
 ZenSymbol *find_symbol_in_all(ParserContext *ctx, const char *n);
 char *find_similar_symbol(ParserContext *ctx, const char *name);
 
+/**
+ * @brief Normalizes a type name (e.g., "int" -> "int32_t").
+ */
+const char *normalize_type_name(const char *name);
+
 // Function registry
 
 /**
@@ -486,14 +497,49 @@ void register_generic(ParserContext *ctx, char *name);
  */
 int is_known_generic(ParserContext *ctx, char *name);
 
+/**
+ * @brief Checks if a name is a primitive type.
+ */
+int is_primitive_type_name(const char *name);
+
+/**
+ * @brief Registers an implementation template.
+ */
 void register_impl_template(ParserContext *ctx, const char *sname, const char *param,
                             ASTNode *node);
+/**
+ * @brief Adds a struct to the list.
+ */
 void add_to_struct_list(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief Adds an enum to the list.
+ */
 void add_to_enum_list(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief Adds a function to the list.
+ */
 void add_to_func_list(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief Adds an implementation to the list.
+ */
 void add_to_impl_list(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief Adds a global to the list.
+ */
 void add_to_global_list(ParserContext *ctx, ASTNode *node);
+
+/**
+ * @brief Registers built-in types and functions.
+ */
 void register_builtins(ParserContext *ctx);
+
+/**
+ * @brief Adds an instantiated function to the list.
+ */
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn);
 
 /**
@@ -548,21 +594,53 @@ DeprecatedFunc *find_deprecated_func(ParserContext *ctx, const char *name);
 /**
  * @brief Parses a single parameter arrow lambda.
  */
-ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, char *param_name);
+ASTNode *parse_arrow_lambda_single(ParserContext *ctx, Lexer *l, char *param_name,
+                                   int default_capture_mode);
 
 /**
  * @brief Parses a multi-parameter arrow lambda.
  */
-ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, char **param_names, int num_params);
+ASTNode *parse_arrow_lambda_multi(ParserContext *ctx, Lexer *l, char **param_names, int num_params,
+                                  int default_capture_mode);
 
 // Utils
 
 /**
  * @brief Parses and converts arguments.
  */
-char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out, int *count_out,
-                             Type ***types_out, char ***names_out, int *is_varargs_out,
-                             char ***ctype_overrides_out);
+char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
+                             ASTNode ***default_values_out, int *count_out, Type ***types_out,
+                             char ***names_out, int *is_varargs_out, char ***ctype_overrides_out);
+
+/**
+ * @brief Scan build directives.
+ */
+void scan_build_directives(struct ParserContext *ctx, const char *src);
+
+/**
+ * @brief Attempt to parse a #define macro as a constant integer.
+ * Used for simple macros in headers to allow array sizes etc.
+ */
+void try_parse_macro_const(struct ParserContext *ctx, const char *content);
+
+/**
+ * @brief Scan a C header line for function prototypes.
+ * Registers discovered function names as extern symbols.
+ */
+void try_parse_c_function_decl(struct ParserContext *ctx, const char *line);
+
+/**
+ * @brief Scan a C header line for struct/union declarations.
+ * Registers discovered type names as opaque type aliases.
+ */
+void try_parse_c_struct_decl(struct ParserContext *ctx, const char *line);
+
+/**
+ * @brief Recursively scan a C header file for declarations.
+ * Follows nested #include "..." directives and extracts macros,
+ * function prototypes, and struct/union declarations.
+ */
+void scan_c_header_contents(struct ParserContext *ctx, const char *path, int depth);
 
 /**
  * @brief Checks if a file has been imported.
@@ -926,18 +1004,6 @@ ASTNode *parse_impl_trait(ParserContext *ctx, Lexer *l);
  * @brief Parses a test definition.
  */
 ASTNode *parse_test(ParserContext *ctx, Lexer *l);
-
-// Move semantics helpers
-
-/**
- * @brief Checks if a type is copyable.
- */
-int is_type_copy(ParserContext *ctx, Type *t);
-
-/**
- * @brief Checks if a type is copyable.
- */
-void check_move_usage(ParserContext *ctx, ASTNode *node, Token t);
 
 /**
  * @brief Parses an include statement.

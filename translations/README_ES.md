@@ -1,23 +1,39 @@
-
 <div align="center">
-
-[English](../README.md) • [Русский](README_RU.md) • [简体中文](README_ZH_CN.md) • [繁體中文](README_ZH_TW.md) • [Español](README_ES.md) • [Italiano](README_IT.md) • [Português Brasileiro](README_PT_BR.md)
-  
+  <p>
+    <a href="../README.md">English</a> •
+    <a href="README_RU.md">Русский</a> •
+    <a href="README_ZH_CN.md">简体中文</a> •
+    <a href="README_ZH_TW.md">繁體中文</a> •
+    <a href="README_ES.md">Español</a> •
+    <a href="README_IT.md">Italiano</a> •
+    <a href="README_PT_BR.md">Português Brasileiro</a>
+  </p>
 </div>
 
 <div align="center">
+  <h1>Zen C</h1>
+  <h3>Ergonomía Moderna. Cero Overhead. C Puro.</h3>
+  <br>
+  <p>
+    <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="Estado de la Construcción"></a>
+    <a href="#"><img src="https://img.shields.io/badge/license-MIT-blue" alt="Licencia"></a>
+    <a href="#"><img src="https://img.shields.io/github/v/release/z-libs/Zen-C?label=version&color=orange" alt="Versión"></a>
+    <a href="#"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-lightgrey" alt="Plataforma"></a>
+  </p>
+  <p><em>Escribe como un lenguaje de alto nivel, ejecuta como C.</em></p>
+</div>
 
-# Zen C
+<hr>
 
-**Ergonomía Moderna. Cero Overhead. C Puro.**
-
-[![Estado de la Construcción](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![Licencia](https://img.shields.io/badge/license-MIT-blue)]()
-[![Versión](https://img.shields.io/github/v/release/z-libs/Zen-C?label=version&color=orange)]()
-[![Plataforma](https://img.shields.io/badge/platform-linux-lightgrey)]()
-
-*Escribe como un lenguaje de alto nivel, ejecuta como C.*
-
+<div align="center">
+  <p>
+    <b><a href="#descripción-general">Descripción General</a></b> •
+    <b><a href="#comunidad">Comunidad</a></b> •
+    <b><a href="#inicio-rápido">Inicio Rápido</a></b> •
+    <b><a href="#referencia-del-lenguaje">Referencia del Lenguaje</a></b> •
+    <b><a href="#biblioteca-estándar">Biblioteca Estándar</a></b> •
+    <b><a href="#herramientas">Herramientas</a></b>
+  </p>
 </div>
 
 ---
@@ -32,87 +48,59 @@
 
 - Discord: [Únete aquí](https://discord.com/invite/q6wEsCmkJP)
 
+## Proyectos Destacados
+
+Echa un vistazo a estos proyectos construidos con Zen C:
+
+- **[ZC-pong-3ds](https://github.com/5quirre1/ZC-pong-3ds)**: Un clon de Pong para Nintendo 3DS.
+- **[zen-c-parin](https://github.com/Kapendev/zen-c-parin)**: Un ejemplo básico usando Zen C con Parin.
+- **[almond](https://git.sr.ht/~leanghok/almond)**: Un navegador web minimalista escrito en Zen C.
+
 ---
 
 ## Índice
 
-- [Descripción General](#descripción-general)
-- [Comunidad](#comunidad)
-- [Inicio Rápido](#inicio-rápido)
-    - [Instalación](#instalación)
-    - [Uso](#uso)
-    - [Variables de Entorno](#variables-de-entorno)
-- [Referencia del Lenguaje](#referencia-del-lenguaje)
-    - [1. Variables y Constantes](#1-variables-y-constantes)
-    - [2. Tipos Primitivos](#2-tipos-primitivos)
-    - [3. Tipos Agregados](#3-tipos-agregados)
-        - [Arrays](#arrays)
-        - [Tuplas](#tuplas)
-        - [Structs](#structs)
-        - [Structs Opacos](#structs-opacos)
-        - [Enums](#enums)
-        - [Uniones](#uniones)
-        - [Alias de Tipos](#alias-de-tipos)
-        - [Alias de Tipos Opacos](#alias-de-tipos-opacos)
-    - [4. Funciones y Lambdas](#4-funciones-y-lambdas)
-        - [Funciones](#funciones)
-        - [Argumentos Const](#argumentos-const)
-        - [Argumentos por Defecto](#argumentos-por-defecto)
-        - [Lambdas (Clausuras)](#lambdas-clausuras)
-        - [Punteros a Funciones Crudos](#punteros-a-funciones-crudos)
-        - [Funciones Variádicas](#funciones-variádicas)
-    - [5. Flujo de Control](#5-flujo-de-control)
-        - [Condicionales](#condicionales)
-        - [Coincidencia de Patrones](#coincidencia-de-patrones)
-        - [Bucles](#bucles)
-        - [Control Avanzado](#control-avanzado)
-    - [6. Operadores](#6-operadores)
-        - [Operadores Sobrecargables](#operadores-sobrecargables)
-        - [Azúcar Sintáctico](#azúcar-sintáctico)
-    - [7. Impresión e Interpolación de Cadenas](#7-impresión-e-interpolación-de-cadenas)
-        - [Palabras Clave](#palabras-clave)
-        - [Abreviaturas](#abreviaturas)
-        - [Interpolación de Cadenas (F-strings)](#interpolación-de-cadenas-f-strings)
-        - [Prompts de Entrada (`?`)](#prompts-de-entrada-)
-    - [8. Gestión de Memoria](#8-gestión-de-memoria)
-        - [Defer](#defer)
-        - [Autofree](#autofree)
-        - [Semántica de Recursos (Movimiento por Defecto)](#semántica-de-recursos-movimiento-por-defecto)
-        - [RAII / Drop Trait](#raii--drop-trait)
-    - [9. Programación Orientada a Objetos](#9-programación-orientada-a-objetos)
-        - [Métodos](#métodos)
-        - [Traits](#traits)
-        - [Traits Estándar](#traits-estándar)
-        - [Composición](#composición)
-    - [10. Genéricos](#10-genéricos)
-    - [11. Concurrencia (Async/Await)](#11-concurrencia-asyncawait)
-    - [12. Metaprogramación](#12-metaprogramación)
-        - [Comptime](#comptime)
-        - [Embed](#embed)
-        - [Plugins](#plugins)
-        - [Macros de C Genéricas](#macros-de-c-genéricas)
-    - [13. Atributos](#13-atributos)
-    - [Atributos Personalizados](#atributos-personalizados)
-    - [Derivaciones Inteligentes](#derivaciones-inteligentes)
-    - [14. Ensamblador Inline](#14-ensamblador-inline)
-        - [Uso Básico](#uso-básico)
-        - [Volatile](#volatile)
-        - [Restricciones con Nombre](#restricciones-con-nombre)
-    - [15. Directivas de Construcción](#15-directivas-de-construcción)
-    - [16. Palabras Clave](#16-palabras-clave)
-    - [17. Interoperabilidad C](#17-interoperabilidad-c)
-- [Biblioteca Estándar](#biblioteca-estándar)
-- [Herramientas](#herramientas)
-    - [Servidor de Lenguaje (LSP)](#servidor-de-lenguaje-lsp)
-    - [REPL](#repl)
-- [Soporte del Compilador y Compatibilidad](#soporte-del-compilador-y-compatibilidad)
-    - [Estado de la Suite de Pruebas](#estado-de-la-suite-de-pruebas)
-    - [Construyendo con Zig](#construyendo-con-zig)
-    - [Interop con C++](#interop-con-c)
-    - [Interop con CUDA](#interop-con-cuda)
-    - [Interop con Objective-C](#interop-con-objective-c)
-- [Contribuyendo](#contribuyendo)
-- [Atribuciones](#atribuciones)
+<table align="center">
+  <tr>
+    <th width="50%">General</th>
+    <th width="50%">Referencia del Lenguaje</th>
+  </tr>
+  <tr>
+    <td valign="top">
+      <ul>
+        <li><a href="#descripción-general">Descripción General</a></li>
+        <li><a href="#comunidad">Comunidad</a></li>
+        <li><a href="#inicio-rápido">Inicio Rápido</a></li>
+        <li><a href="#biblioteca-estándar">Biblioteca Estándar</a></li>
+        <li><a href="#herramientas">Herramientas</a></li>
+        <li><a href="#soporte-del-compilador-y-compatibilidad">Soporte del Compilador</a></li>
+        <li><a href="#contribuyendo">Contribuyendo</a></li>
+        <li><a href="#atribuciones">Atribuciones</a></li>
+      </ul>
+    </td>
+    <td valign="top">
+      <ul>
+        <li><a href="#1-variables-y-constantes">1. Variables y Constantes</a></li>
+        <li><a href="#2-tipos-primitivos">2. Tipos Primitivos</a></li>
+        <li><a href="#3-tipos-agregados">3. Tipos Agregados</a></li>
+        <li><a href="#4-funciones-y-lambdas">4. Funciones y Lambdas</a></li>
+        <li><a href="#5-flujo-de-control">5. Flujo de Control</a></li>
+        <li><a href="#6-operadores">6. Operadores</a></li>
+        <li><a href="#7-impresión-e-interpolación-de-cadenas">7. Impresión e Interpolación</a></li>
+        <li><a href="#8-gestión-de-memoria">8. Gestión de Memoria</a></li>
+        <li><a href="#9-programación-orientada-a-objetos">9. POO</a></li>
+        <li><a href="#10-genéricos">10. Genéricos</a></li>
+        <li><a href="#11-concurrencia-asyncawait">11. Concurrencia</a></li>
+        <li><a href="#12-metaprogramación">12. Metaprogramación</a></li>
+        <li><a href="#13-atributos">13. Atributos</a></li>
+        <li><a href="#14-ensamblador-inline">14. Ensamblador Inline</a></li>
+        <li><a href="#15-directivas-de-construcción">15. Directivas de Construcción</a></li>
+        <li><a href="#16-palabras-clave">16. Palabras Clave</a></li>
+        <li><a href="#17-interoperabilidad-c">17. Interoperabilidad C</a></li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -123,9 +111,22 @@
 ```bash
 git clone https://github.com/z-libs/Zen-C.git
 cd Zen-C
+make clean # eliminar archivos de construcción antiguos
 make
 sudo make install
 ```
+
+### Windows
+
+Zen C has full native support for Windows (x86_64). You can build using the provided batch script with GCC (MinGW):
+
+```cmd
+build.bat
+```
+
+This will build the compiler (`zc.exe`). Networking, Filesystem, and Process operations are fully supported via the Platform Abstraction Layer (PAL).
+
+Alternatively, you can use `make` if you have a Unix-like environment (MSYS2, Cygwin, git-bash).
 
 ### Construcción Portable (APE)
 
@@ -198,6 +199,7 @@ let y: const int = 10;  // Solo lectura (Calificado por tipo)
 // y = 20;              // Error: no se puede asignar a una constante
 ```
 
+> [!TIP]
 > **Inferencia de tipos**: Zen C infiere automáticamente los tipos para variables inicializadas. Se compila a `auto` de C23 en compiladores compatibles, o a la extensión `__auto_type` de GCC en otros casos.
 
 ### 2. Tipos Primitivos
@@ -209,6 +211,7 @@ let y: const int = 10;  // Solo lectura (Calificado por tipo)
 | `c_short`, `c_ushort` | `short`, `unsigned short` | C short (Interoperabilidad) |
 | `c_int`, `c_uint` | `int`, `unsigned int` | C int (Interoperabilidad) |
 | `c_long`, `c_ulong` | `long`, `unsigned long` | C long (Interoperabilidad) |
+| `c_long_long`, `c_ulong_long` | `long long`, `unsigned long long` | C long long / unsigned long long (Interoperabilidad) |
 | `I8` .. `I128` o `i8` .. `i128` | `int8_t` .. `__int128_t` | Enteros con signo de ancho fijo |
 | `U8` .. `U128` o `u8` .. `u128` | `uint8_t` .. `__uint128_t` | Enteros sin signo de ancho fijo |
 | `isize`, `usize` | `ptrdiff_t`, `size_t` | Enteros del tamaño de un puntero |
@@ -221,10 +224,11 @@ let y: const int = 10;  // Solo lectura (Calificado por tipo)
 | `iN` (ej. `i256`) | `_BitInt(N)` | Entero con signo de ancho arbitrario (C23) |
 | `uN` (ej. `u42`) | `unsigned _BitInt(N)` | Entero sin signo de ancho arbitrario (C23) |
 
+> [!IMPORTANT]
 > **Mejores Prácticas para Código Portable**
 >
 > - Usa **Tipos Portables** (`int`, `uint`, `i64`, `u8`, etc.) para toda la lógica pura de Zen C. `int` garantiza ser 32-bits con signo en todas las arquitecturas.
-> - Usa **Tipos de Interoperabilidad C** (`c_int`, `c_char`, `c_long`) **sólo** al interactuar con bibliotecas C (FFI). Su tamaño varía según la plataforma y el compilador C.
+> - Usa **Tipos de Interoperabilidad C** (`c_int`, `c_char`, `c_long`, ``c_ulong``, ``c_long_long``, ``c_ulong_long``) **sólo** al interactuar con bibliotecas C (FFI). Su tamaño varía según la plataforma y el compilador C.
 > - Usa `isize` y `usize` para indexado de arrays y aritmética de punteros.
 
 ### 3. Tipos Agregados
@@ -266,6 +270,12 @@ let (suma, resta) = sumar_y_restar(3, 2);
 // suma = 5, resta = 1
 ```
 
+La desestructuración tipada permite anotaciones de tipo explícitas:
+```zc
+let (a: string, b: u8) = ("hello", 42);
+let (x, y: i32) = (1, 2);  // Mixto: x inferido, y explícito
+```
+
 #### Structs
 Estructuras de datos con campos de bits opcionales.
 ```zc
@@ -284,7 +294,8 @@ struct Flags {
 }
 ```
 
-> **Nota**: Los structs usan [Semántica de Movimiento](#semántica-de-recursos-movimiento-por-defecto) por defecto. Los campos se pueden acceder mediante `.` incluso en punteros (Auto-Dereferencia).
+> [!NOTE]
+> Los structs usan [Semántica de Movimiento](#semántica-de-recursos-movimiento-por-defecto) por defecto. Los campos se pueden acceder mediante `.` incluso en punteros (Auto-Dereferencia).
 
 #### Structs Opacos
 Puedes definir un struct como `opaque` para restringir el acceso a sus campos solo al módulo que lo define, permitiendo aún que el struct sea asignado en el stack (el tamaño es conocido).
@@ -412,6 +423,26 @@ Funciones anónimas que pueden capturar su entorno.
 let factor = 2;
 let doble = x -> x * factor;  // Sintaxis de flecha
 let completo = fn(x: int) -> int { return x * factor; }; // Sintaxis de bloque
+
+// Captura por Referencia (Sintaxis de Bloque)
+let val = 10;
+let modificar = fn[&]() { val += 1; }; 
+modificar(); // val ahora es 11
+
+// Captura por Referencia (Sintaxis de Flecha)
+let modificar_flecha = [&] x -> val += x;
+modificar_flecha(5); // val ahora es 16
+
+// Captura por Referencia (Sintaxis de Flecha con Múltiples Argumentos)
+let sumar_en = [&] (a, b) -> val += (a + b);
+sumar_en(2, 2); // val ahora es 20
+
+// Captura por Valor (Por Defecto)
+let original = 100;
+let implicita = x -> original + x;      // Captura implícita por valor (sin corchetes)
+let explicita = [=] x -> original + x;  // Captura explícita por valor
+// let fallar = x -> original += x;     // Error: no se puede asignar a valor capturado
+
 ```
 
 #### Punteros a Funciones Crudos
@@ -506,6 +537,7 @@ for i in 0..10 { ... }      // Exclusivo (0 al 9)
 for i in 0..<10 { ... }     // Exclusivo (Explícito)
 for i in 0..=10 { ... }     // Inclusivo (0 al 10)
 for i in 0..10 step 2 { ... }
+for i in 10..0 step -1 { ... }  // Descending loop
 
 // Iterador (Vec o Iterable personalizado)
 for item in vec { ... }
@@ -595,19 +627,23 @@ Zen C proporciona opciones versátiles para imprimir en la consola, incluyendo p
 
 #### Palabras Clave
 
-- `print "texto"`: Imprime en `stdout` sin un salto de línea al final.
-- `println "texto"`: Imprime en `stdout` con un salto de línea al final.
-- `eprint "texto"`: Imprime en `stderr` sin un salto de línea al final.
-- `eprintln "texto"`: Imprime en `stderr` con un salto de línea al final.
+| Palabra Clave | Descripción |
+|:---|:---|
+| `print "texto"` | Imprime en `stdout` sin un salto de línea al final. |
+| `println "texto"` | Imprime en `stdout` **con** un salto de línea al final. |
+| `eprint "texto"` | Imprime en `stderr` sin un salto de línea al final. |
+| `eprintln "texto"` | Imprime en `stderr` **con** un salto de línea al final. |
 
 #### Abreviaturas
 
 Zen C permite usar literales de cadena directamente como sentencias para una impresión rápida:
 
-- `"Hola Mundo"`: Equivalente a `println "Hola Mundo"`. (Añade salto de línea implícito)
-- `"Hola Mundo"..`: Equivalente a `print "Hola Mundo"`. (Sin salto de línea final)
-- `!"Error"`: Equivalente a `eprintln "Error"`. (Salida a stderr)
-- `!"Error"..`: Equivalente a `eprint "Error"`. (Salida a stderr, sin salto de línea)
+| Sintaxis | Equivalente | Descripción |
+|:---|:---|:---|
+| `"Hz"` | `println "Hz"` | Imprime en `stdout` con salto de línea. |
+| `"Hz"..` | `print "Hz"` | Imprime en `stdout` sin salto de línea. |
+| `!"Err"` | `eprintln "Err"` | Imprime en `stderr` con salto de línea. |
+| `!"Err"..` | `eprint "Err"` | Imprime en `stderr` sin salto de línea. |
 
 #### Interpolación de Cadenas (F-strings)
 
@@ -727,6 +763,30 @@ impl Point {
 }
 ```
 
+**Atajo de Self**: En métodos con un parámetro `self`, puedes usar `.campo` como abreviatura de `self.campo`:
+```zc
+impl Point {
+    fn dist(self) -> float {
+        return sqrt(.x * .x + .y * .y);  // Equivalente a self.x, self.y
+    }
+}
+```
+
+#### Métodos primitivos
+Zen C permite definir métodos en tipos primitivos (como `int`, `bool`, etc.) usando la misma sintaxis `impl`.
+
+```zc
+impl int {
+    fn abs(self) -> int {
+        return *self < 0 ? -(*self) : *self;
+    }
+}
+
+let x = -10;
+let y = x.abs(); // 10
+let z = (-5).abs(); // 5 (Literals supported)
+```
+
 #### Traits
 Define un comportamiento compartido.
 ```zc
@@ -803,12 +863,13 @@ impl Drop for Recurso {
 }
 ```
 
-> **Nota:** Si una variable es movida, no se llama a `drop` en la variable original. Se adhiere a la [Semántica de Recursos](#semántica-de-recursos-movimiento-por-defecto).
+> [!NOTE] Si una variable es movida, no se llama a `drop` en la variable original. Se adhiere a la [Semántica de Recursos](#semántica-de-recursos-movimiento-por-defecto).
 
 **Copy**
 
 Trait marcador para optar por el comportamiento `Copy` (duplicación implícita) en lugar de la semántica de movimiento. Se usa mediante `@derive(Copy)`.
 
+> [!CAUTION]
 > **Regla:** Los tipos que implementan `Copy` no deben definir un destructor (`Drop`).
 
 ```zc
@@ -912,6 +973,88 @@ comptime {
 println "Fecha de compilación: {fecha_compilacion}";
 ```
 
+<details>
+<summary><b>Funciones Auxiliares</b></summary>
+
+Funciones especiales disponibles dentro de bloques `comptime`:
+
+<table>
+<tr>
+<th>Función</th>
+<th>Descripción</th>
+</tr>
+<tr>
+<td><code>yield(str)</code></td>
+<td>Emite código generado explícitamente (alternativa a <code>printf</code>)</td>
+</tr>
+<tr>
+<td><code>code(str)</code></td>
+<td>Alias de <code>yield()</code> - intención más clara para generación de código</td>
+</tr>
+<tr>
+<td><code>compile_error(msg)</code></td>
+<td>Detiene la compilación con un mensaje de error fatal</td>
+</tr>
+<tr>
+<td><code>compile_warn(msg)</code></td>
+<td>Emite una advertencia en tiempo de compilación (permite continuar)</td>
+</tr>
+</table>
+
+**Ejemplo:**
+```zc
+comptime {
+    compile_warn("Generando código optimizado...");
+    
+    let ENABLE_FEATURE = 1;
+    if (ENABLE_FEATURE == 0) {
+        compile_error("¡La función debe estar habilitada!");
+    }
+    
+    // Usa code() con raw strings para generación limpia
+    code(r"let FEATURE_ENABLED = 1;");
+}
+```
+</details>
+
+<details>
+<summary><b>Metadatos de Construcción</b></summary>
+
+Accede a información de construcción del compilador en tiempo de compilación:
+
+<table>
+<tr>
+<th>Constante</th>
+<th>Tipo</th>
+<th>Descripción</th>
+</tr>
+<tr>
+<td><code>__COMPTIME_TARGET__</code></td>
+<td>string</td>
+<td>Plataforma: <code>"linux"</code>, <code>"windows"</code> o <code>"macos"</code></td>
+</tr>
+<tr>
+<td><code>__COMPTIME_FILE__</code></td>
+<td>string</td>
+<td>Nombre del archivo fuente actual siendo compilado</td>
+</tr>
+</table>
+
+**Ejemplo:**
+```zc
+comptime {
+    // Generación de código específica de plataforma
+    println "let PLATFORM = \"{__COMPTIME_TARGET__}\";";
+}
+
+println "Ejecutando en: {PLATFORM}";
+```
+</details>
+
+> [!TIP]
+> Usa raw strings (`r"..."`) en comptime para evitar escapar llaves: `code(r"fn test() { return 42; }")`. De lo contrario, usa `{{` y `}}` para escapar llaves en strings regulares.
+
+
 #### Embed
 Embebe archivos como los tipos especificados.
 ```zc
@@ -934,7 +1077,8 @@ let re = regex! { ^[a-z]+$ };
 #### Macros de C Genéricas
 Pasa macros del preprocesador directamente a C.
 
-> **Consejo**: Para constantes simples, usa `def` en su lugar. Usa `#define` cuando necesites macros del preprocesador de C o flags de compilación condicional.
+> [!TIP]
+> Para constantes simples, usa `def` en su lugar. Usa `#define` cuando necesites macros del preprocesador de C o flags de compilación condicional.
 
 ```zc
 #define MAX_BUFFER 1024
@@ -1167,6 +1311,9 @@ Zen C incluye una biblioteca estándar (`std`) que cubre las funcionalidades ese
 
 ### Módulos Clave
 
+<details>
+<summary>Click para ver todos los módulos de la Biblioteca Estándar</summary>
+
 | Módulo | Descripción | Docs |
 | :--- | :--- | :--- |
 | **`std/vec.zc`** | Array dinámico creíble `Vec<T>`. | [Docs](../docs/std/vec.md) |
@@ -1186,6 +1333,9 @@ Zen C incluye una biblioteca estándar (`std`) que cubre las funcionalidades ese
 | **`std/stack.zc`** | Pila LIFO `Stack<T>`. | [Docs](../docs/std/stack.md) |
 | **`std/set.zc`** | Conjunto Hash Genérico `Set<T>`. | [Docs](../docs/std/set.md) |
 | **`std/process.zc`** | Ejecución y gestión de procesos. | [Docs](../docs/std/process.md) |
+| **`std/regex.zc`** | Expresiones Regulares (basado en TRE). | [Docs](../docs/std/regex.md) |
+
+</details>
 
 ---
 
@@ -1266,14 +1416,20 @@ zc run app.zc --cc zig
 
 ### Estado de la Suite de Pruebas
 
+<details>
+<summary>Click para ver detalles de Soporte del Compilador</summary>
+
 | Compilador | Tasa de Acierto | Características Soportadas | Limitaciones Conocidas |
 |:---|:---:|:---|:---|
-| **GCC** | **100%** | Todas las Características | Ninguna. |
-| **Clang** | **100%** | Todas las Características | Ninguna. |
-| **Zig** | **100%** | Todas las Características | Ninguna. Usa `zig cc` como reemplazo directo del compilador C. |
-| **TCC** | **~70%** | Sintaxis Básica, Genéricos, Traits | Sin `__auto_type`, Sin ASM Intel, Sin funciones anidadas. |
+| **GCC** | **100% (Completo)** | Todas las características | Ninguna. |
+| **Clang** | **100% (Completo)** | Todas las características | Ninguna. |
+| **Zig** | **100% (Completo)** | Todas las características | Ninguna. Usa `zig cc` como compilador C. |
+| **TCC** | **98% (Alto)** | Estructuras, Genéricos, Traits, Coincidencia de Patrones | Sin ASM Intel, Sin `__attribute__((constructor))`. |
 
-> **Recomendación:** Usa **GCC**, **Clang** o **Zig** para construcciones de producción. TCC es excelente para el prototipado rápido debido a su velocidad de compilación, pero le faltan algunas extensiones de C avanzadas en las que confía Zen C para el soporte total de características.
+</details>
+
+> [!WARNING]
+> **ADVERTENCIA DE COMPILACIÓN:** Aunque **Zig CC** funciona excelentemente como backend para tus programas Zen C, compilar el *propio compilador Zen C* con el puede verificar pero producir un binario inestable que falla en las pruebas. Recomendamos compilar el compilador con **GCC** o **Clang** y usar Zig solo como backend para tu código operativo.
 
 ### Construyendo con Zig
 
@@ -1320,7 +1476,8 @@ fn main() {
 }
 ```
 
-> **Nota:** La flag `--cpp` cambia el backend a `g++` y emite código compatible con C++ (usa `auto` en lugar de `__auto_type`, sobrecarga de funciones en lugar de `_Generic`, y casts explícitos para `void*`).
+> [!NOTE]
+> La flag `--cpp` cambia el backend a `g++` y emite código compatible con C++ (usa `auto` en lugar de `__auto_type`, sobrecarga de funciones en lugar de `_Generic`, y casts explícitos para `void*`).
 
 #### Interop con CUDA
 
@@ -1414,6 +1571,7 @@ let tid = local_id();
 ```
 
 
+> [!NOTE]
 > **Nota:** La flag `--cuda` establece `nvcc` como el compilador e implica el modo `--cpp`. Requiere el NVIDIA CUDA Toolkit.
 
 ### Soporte C23
@@ -1453,6 +1611,7 @@ fn main() {
 }
 ```
 
+> [!NOTE]
 > **Nota:** La interpolación de cadenas de Zen C funciona con objetos de Objective-C (`id`) llamando a `debugDescription` o `description`.
 
 ---
@@ -1461,35 +1620,13 @@ fn main() {
 
 ¡Damos la bienvenida a las contribuciones! Ya sea corrigiendo errores, añadiendo documentación o proponiendo nuevas características.
 
-### Cómo Contribuir
-1.  **Haz un Fork del Repositorio**: flujo de trabajo estándar de GitHub.
-2.  **Crea una Rama de Característica**: `git checkout -b feature/NuevaCosa`.
-3.  **Guías de Código**:
-    *   Sigue el estilo de C existente.
-    *   Asegúrate de que todas las pruebas pasen: `make test`.
-    *   Añade nuevas pruebas para tu característica en `tests/`.
-4.  **Envía un Pull Request**: Describe tus cambios claramente.
+Por favor, consulta [CONTRIBUTING_ES.md](CONTRIBUTING_ES.md) para ver las guías detalladas sobre cómo contribuir, ejecutar pruebas y enviar pull requests.
 
-### Ejecutando Pruebas
-La suite de pruebas es tu mejor amiga.
+---
 
-```bash
-# Ejecutar todas las pruebas (GCC)
-make test
+## Seguridad
 
-# Ejecutar una prueba específica
-./zc run tests/test_match.zc
-
-# Ejecutar con un compilador diferente
-./tests/run_tests.sh --cc clang
-./tests/run_tests.sh --cc zig
-./tests/run_tests.sh --cc tcc
-```
-
-### Extendiendo el Compilador
-*   **Parser**: `src/parser/` - Parser de descenso recursivo.
-*   **Codegen**: `src/codegen/` - Lógica del transpilador (Zen C -> GNU C/C11).
-*   **Biblioteca Estándar**: `std/` - Escrita en el propio Zen C.
+Para instrucciones sobre reportes de seguridad, por favor vea [SECURITY_ES.md](SECURITY_ES.md).
 
 ---
 
@@ -1500,3 +1637,18 @@ Este proyecto utiliza bibliotecas de terceros. Los textos completos de las licen
 *   **[cJSON](https://github.com/DaveGamble/cJSON)** (Licencia MIT): Usado para el parseo y generación de JSON en el Servidor de Lenguaje.
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (Licencia MIT): El port original de Ejecutable Realmente Portable de Zen-C por [Eugene Olonov](https://github.com/OEvgeny).
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (Licencia ISC): La biblioteca fundamental que hace posible APE.
+*   **[TRE](https://github.com/laurikari/tre)** (Licencia BSD): Usado para el motor de expresiones regulares en la biblioteca estándar.
+
+---
+
+<div align="center">
+  <p>
+    Copyright © 2026 Lenguaje de Programación Zen C.<br>
+    Comienza tu viaje hoy.
+  </p>
+  <p>
+    <a href="https://discord.com/invite/q6wEsCmkJP">Discord</a> •
+    <a href="https://github.com/z-libs/Zen-C">GitHub</a> •
+    <a href="CONTRIBUTING_ES.md">Contribuir</a>
+  </p>
+</div>

@@ -1,23 +1,39 @@
-
 <div align="center">
-
-[English](../README.md) • [Русский](README_RU.md) • [简体中文](README_ZH_CN.md) • [繁體中文](README_ZH_TW.md) • [Español](README_ES.md) • [Italiano](README_IT.md) • [Português Brasileiro](README_PT_BR.md)
-
+  <p>
+    <a href="../README.md">English</a> •
+    <a href="README_RU.md">Русский</a> •
+    <a href="README_ZH_CN.md">简体中文</a> •
+    <a href="README_ZH_TW.md">繁體中文</a> •
+    <a href="README_ES.md">Español</a> •
+    <a href="README_IT.md">Italiano</a> •
+    <a href="README_PT_BR.md">Português Brasileiro</a>
+  </p>
 </div>
 
 <div align="center">
+  <h1>Zen C</h1>
+  <h3>現代開發體驗。零開銷。純淨 C。</h3>
+  <br>
+  <p>
+    <a href="#"><img src="https://img.shields.io/badge/build-passing-brightgreen" alt="構建狀態"></a>
+    <a href="#"><img src="https://img.shields.io/badge/license-MIT-blue" alt="許可證"></a>
+    <a href="#"><img src="https://img.shields.io/github/v/release/z-libs/Zen-C?label=version&color=orange" alt="版本"></a>
+    <a href="#"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-lightgrey" alt="平台"></a>
+  </p>
+  <p><em>像高級語言一樣編寫，像 C 一樣運行。</em></p>
+</div>
 
-# Zen C
+<hr>
 
-**現代開發體驗。零開銷。純淨 C。**
-
-[![構建狀態](https://img.shields.io/badge/build-passing-brightgreen)]()
-[![許可證](https://img.shields.io/badge/license-MIT-blue)]()
-[![版本](https://img.shields.io/github/v/release/z-libs/Zen-C?label=version&color=orange)]()
-[![平台](https://img.shields.io/badge/platform-linux-lightgrey)]()
-
-*像高級語言一樣編寫，像 C 一樣運行。*
-
+<div align="center">
+  <p>
+    <b><a href="#概述">概述</a></b> •
+    <b><a href="#社區">社區</a></b> •
+    <b><a href="#快速入門">快速入門</a></b> •
+    <b><a href="#語言參考">語言參考</a></b> •
+    <b><a href="#標準庫">標準庫</a></b> •
+    <b><a href="#工具鏈">工具鏈</a></b>
+  </p>
 </div>
 
 ---
@@ -32,87 +48,59 @@
 
 - Discord: [點擊加入](https://discord.com/invite/q6wEsCmkJP)
 
+## 展示
+
+查看這些使用 Zen C 構建的項目：
+
+- **[ZC-pong-3ds](https://github.com/5quirre1/ZC-pong-3ds)**: Nintendo 3DS 上的 Pong 克隆版。
+- **[zen-c-parin](https://github.com/Kapendev/zen-c-parin)**: 使用 Parin 的 Zen C 基礎範例。
+- **[almond](https://git.sr.ht/~leanghok/almond)**: 用 Zen C 編寫的極簡網頁瀏覽器。
+
 ---
 
 ## 目錄
 
-- [概述](#概述)
-- [社區](#社區)
-- [快速入門](#快速入門)
-    - [安裝](#安裝)
-    - [用法](#用法)
-    - [環境變量](#環境變量)
-- [語言參考](#語言參考)
-    - [1. 變量與常量](#1-變量與常量)
-    - [2. 原始類型](#2-原始類型)
-    - [3. 複合類型](#3-複合類型)
-        - [數組](#數組)
-        - [元組](#元組)
-        - [結構體](#結構體)
-        - [不透明結構體](#不透明結構體)
-        - [枚舉](#枚舉)
-        - [聯合體](#聯合體)
-        - [類型別名](#類型別名)
-        - [不透明類型別名](#不透明類型別名)
-    - [4. 函數與 Lambda](#4-函數與-lambda)
-        - [函數](#函數)
-        - [常量參數](#常量參數)
-        - [默認參數](#默認參數)
-        - [Lambda (閉包)](#lambda-閉包)
-        - [原始函數指針](#原始函數指針)
-        - [變參函數](#變參函數)
-    - [5. 控制流](#5-控制流)
-        - [條件語句](#條件語句)
-        - [模式匹配](#模式匹配)
-        - [循環](#循環)
-        - [高級控制](#高級控制)
-    - [6. 運算符](#6-運算符)
-        - [可重載運算符](#可重載運算符)
-        - [語法糖](#語法糖)
-    - [7. 打印與字符串插值](#7-打印與字符串插值)
-        - [關鍵字](#關鍵字)
-        - [簡寫形式](#簡寫形式)
-        - [字符串插值 (F-strings)](#字符串插值-f-strings)
-        - [輸入提示 (`?`)](#輸入提示-)
-    - [8. 內存管理](#8-內存管理)
-        - [Defer](#defer)
-        - [Autofree](#autofree)
-        - [資源語義 (默認移動)](#資源語義-默認移動)
-        - [RAII / Drop Trait](#raii--drop-trait)
-    - [9. 面向對象編程](#9-面向對象編程)
-        - [方法](#方法)
-        - [Trait](#trait)
-        - [標準 Trait](#標準-trait)
-        - [組合](#組合)
-    - [10. 泛型](#10-泛型)
-    - [11. 並發 (Async/Await)](#11-並發-asyncawait)
-    - [12. 元編程](#12-元編程)
-        - [Comptime](#comptime)
-        - [Embed](#embed)
-        - [插件](#插件)
-        - [泛型 C 宏](#泛型-c-宏)
-    - [13. 屬性](#13-屬性)
-    - [自定義屬性](#自定義屬性)
-    - [智能派生](#智能派生)
-    - [14. 內聯匯編](#14-內聯匯編)
-        - [基本用法](#基本用法)
-        - [Volatile](#volatile)
-        - [命名約束](#命名約束)
-    - [15. 構建指令](#15-構建指令)
-    - [16. 關鍵字](#16-關鍵字)
-    - [17. C 互操作性](#17-c-互操作性)
-- [標準庫](#標準庫)
-- [工具鏈](#工具鏈)
-    - [語言服務器 (LSP)](#語言服務器-lsp)
-    - [REPL](#repl)
-- [編譯器支持與兼容性](#編譯器支持與兼容性)
-    - [測試套件狀態](#測試套件狀態)
-    - [使用 Zig 構建](#使用-zig-構建)
-    - [C++ 互操作](#c-互操作)
-    - [CUDA 互操作](#cuda-互操作)
-    - [Objective-C 互操作](#objective-c-互操作)
-- [貢獻](#貢獻)
-- [致謝與歸屬](#致謝與歸屬)
+<table align="center">
+  <tr>
+    <th width="50%">通用</th>
+    <th width="50%">語言參考</th>
+  </tr>
+  <tr>
+    <td valign="top">
+      <ul>
+        <li><a href="#概述">概述</a></li>
+        <li><a href="#社區">社區</a></li>
+        <li><a href="#快速入門">快速入門</a></li>
+        <li><a href="#標準庫">標準庫</a></li>
+        <li><a href="#工具鏈">工具鏈</a></li>
+        <li><a href="#編譯器支持與兼容性">編譯器支持與兼容性</a></li>
+        <li><a href="#貢獻">貢獻</a></li>
+        <li><a href="#致謝與歸屬">致謝與歸屬</a></li>
+      </ul>
+    </td>
+    <td valign="top">
+      <ul>
+        <li><a href="#1-變量與常量">1. 變量與常量</a></li>
+        <li><a href="#2-原始類型">2. 原始類型</a></li>
+        <li><a href="#3-複合類型">3. 複合類型</a></li>
+        <li><a href="#4-函數與-lambda">4. 函數與 Lambda</a></li>
+        <li><a href="#5-控制流">5. 控制流</a></li>
+        <li><a href="#6-運算符">6. 運算符</a></li>
+        <li><a href="#7-打印與字符串插值">7. 打印與字符串插值</a></li>
+        <li><a href="#8-內存管理">8. 內存管理</a></li>
+        <li><a href="#9-面向對象編程">9. 面向對象編程</a></li>
+        <li><a href="#10-泛型">10. 泛型</a></li>
+        <li><a href="#11-並發-asyncawait">11. 並發</a></li>
+        <li><a href="#12-元編程">12. 元編程</a></li>
+        <li><a href="#13-屬性">13. 屬性</a></li>
+        <li><a href="#14-內聯匯編">14. 內聯匯編</a></li>
+        <li><a href="#15-構建指令">15. 構建指令</a></li>
+        <li><a href="#16-關鍵字">16. 關鍵字</a></li>
+        <li><a href="#17-c-互操作性">17. C 互操作性</a></li>
+      </ul>
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -123,9 +111,22 @@
 ```bash
 git clone https://github.com/z-libs/Zen-C.git
 cd Zen-C
+make clean # 移除舊的構建文件
 make
 sudo make install
 ```
+
+### Windows
+
+Zen C has full native support for Windows (x86_64). You can build using the provided batch script with GCC (MinGW):
+
+```cmd
+build.bat
+```
+
+This will build the compiler (`zc.exe`). Networking, Filesystem, and Process operations are fully supported via the Platform Abstraction Layer (PAL).
+
+Alternatively, you can use `make` if you have a Unix-like environment (MSYS2, Cygwin, git-bash).
 
 ### 便攜式構建 (APE)
 
@@ -198,6 +199,7 @@ let y: const int = 10;  // 只讀 (類型修飾)
 // y = 20;              // 錯誤：無法賦值給 const 變量
 ```
 
+> [!TIP]
 > **型別推導**：Zen C 自動推導初始化變數的型別。在支援的編譯器上編譯為 C23 的 `auto`，否則使用 GCC 的 `__auto_type` 擴充功能。
 
 ### 2. 原始類型
@@ -209,6 +211,7 @@ let y: const int = 10;  // 只讀 (類型修飾)
 | `c_short`, `c_ushort` | `short`, `unsigned short` | C short (互操作) |
 | `c_int`, `c_uint` | `int`, `unsigned int` | C int (互操作) |
 | `c_long`, `c_ulong` | `long`, `unsigned long` | C long (互操作) |
+| `c_long_long`, `c_ulong_long` | `long long`, `unsigned long long` | C long long / unsigned long long (互操作) |
 | `I8` .. `I128` 或 `i8` .. `i128` | `int8_t` .. `__int128_t` | 有符號固定寬度整數 |
 | `U8` .. `U128` 或 `u8` .. `u128` | `uint8_t` .. `__uint128_t` | 無符號固定寬度整數 |
 | `isize`, `usize` | `ptrdiff_t`, `size_t` | 指針大小的整數 |
@@ -221,10 +224,11 @@ let y: const int = 10;  // 只讀 (類型修飾)
 | `iN` (例 `i256`) | `_BitInt(N)` | 任意位元寬度有號整數 (C23) |
 | `uN` (例 `u42`) | `unsigned _BitInt(N)` | 任意位寬無號整數 (C23) |
 
+> [!IMPORTANT]
 > **可移植代碼最佳實踐**
 >
 > - 對於所有純 Zen C 邏輯，請使用 **可移植類型** (`int`、`uint`、`i64`、`u8` 等)。`int` 保證在所有架構上都是 32 位元有號整數。
-> - 僅在與 C 庫 (FFI) 交互時使用 **C 互操作類型** (`c_int`、`c_char`、`c_long`)。它們的大小因平台和 C 編譯器而異。
+> - 僅在與 C 庫 (FFI) 交互時使用 **C 互操作類型** (`c_int`、`c_char`、`c_long`, `c_ulong`, `c_long_long`, `c_ulong_long`)。它們的大小因平台和 C 編譯器而異。
 > - 使用 `isize` 和 `usize` 進行數組索引和內存指針運算。
 
 ### 3. 複合類型
@@ -266,6 +270,12 @@ let (sum, diff) = add_and_subtract(3, 2);
 // sum = 5, diff = 1
 ```
 
+帶類型的解構允許顯式類型注解：
+```zc
+let (a: string, b: u8) = ("hello", 42);
+let (x, y: i32) = (1, 2);  // 混合：x 推斷，y 顯式
+```
+
 #### 結構體
 帶有可選位域的數據結構。
 ```zc
@@ -284,7 +294,8 @@ struct Flags {
 }
 ```
 
-> **注意**：結構體默認使用 [移動語義](#資源語義-默認移動)。即使是指針，也可以通過 `.` 訪問字段（自動解引用）。
+> [!NOTE]
+> 結構体默認使用 [移動語義](#資源語義-默認移動)。即使是指針，也可以通過 `.` 訪問字段（自動解引用）。
 
 #### 不透明結構體
 你可以將結構體定義為 `opaque`，以將對其字段的訪問限制在定義該結構體的模塊內部，同時仍允許在棧上分配該結構體（大小已知）。
@@ -368,7 +379,8 @@ fn add(a: int, b: int) -> int {
 add(a: 10, b: 20);
 ```
 
-> **注意**：命名參數必須嚴格遵循定義的參數順序。`add(b: 20, a: 10)` 是無效的。
+> [!NOTE]
+> 命名參數必須嚴格遵循定義的參數順序。`add(b: 20, a: 10)` 是無效的。
 
 #### 常量參數
 函數參數可以標記為 `const` 以強制執行只讀語義。這是一個類型修飾符，而不是清單常量。
@@ -410,8 +422,28 @@ fn main() {
 可以捕獲環境的匿名函數。
 ```zc
 let factor = 2;
-let double = x -> x * factor;  // 箭頭語法
-let full = fn(x: int) -> int { return x * factor; }; // 塊語法
+let doubler = x -> x * factor;  // 箭頭語法
+let full = fn(x: int) -> int { return x * factor; }; // 區塊語法
+
+// 引用捕獲（區塊語法）
+let val = 10;
+let modify = fn[&]() { val += 1; }; 
+modify(); // val 現在是 11
+
+// 引用捕獲（箭頭語法）
+let modify_arrow = [&] x -> val += x;
+modify_arrow(5); // val 現在是 16
+
+// 引用捕獲（多參數箭頭語法）
+let sum_into = [&] (a, b) -> val += (a + b);
+sum_into(2, 2); // val 現在是 20
+
+// 值捕獲（默認）
+let original = 100;
+let implicit = x -> original + x;       // 隱式值捕獲（無括號）
+let explicit = [=] x -> original + x;   // 顯式值捕獲
+// let fail = x -> original += x;       // 錯誤：無法賦值給捕獲的值
+
 ```
 
 #### 原始函數指針
@@ -506,6 +538,7 @@ for i in 0..10 { ... }      // 左閉右開 (0 到 9)
 for i in 0..<10 { ... }     // 左閉右開 (顯式)
 for i in 0..=10 { ... }     // 全閉 (0 到 10)
 for i in 0..10 step 2 { ... }
+for i in 10..0 step -1 { ... }  // Descending loop
 
 // 迭代器 (Vec 或自定義 Iterable)
 for item in vec { ... }
@@ -557,6 +590,7 @@ Zen C 通過實現特定的方法名來支持用戶定義結構體的運算符�
 | **索引** | `a[i]` | `get(a, i)` |
 | | `a[i] = v` | `set(a, i, v)` |
 
+> [!NOTE]
 > **關於字符串相等性的說明**：
 > - `string == string` 進行 **值比較**（等同於 `strcmp`）。
 > - `char* == char*` 進行 **指針比較**（檢查內存地址）。
@@ -594,19 +628,23 @@ Zen C 提供了多種控制台打印選項，包括關鍵字和簡潔的簡寫�
 
 #### 關鍵字
 
-- `print "text"`: 打印到 `stdout`，不帶尾隨換行符。
-- `println "text"`: 打印到 `stdout`，帶尾隨換行符。
-- `eprint "text"`: 打印到 `stderr`，不帶尾隨換行符。
-- `eprintln "text"`: 打印到 `stderr`，帶尾隨換行符。
+| 關鍵字 | 描述 |
+|:---|:---|
+| `print "text"` | 打印到 `stdout`，不帶尾隨換行符。 |
+| `println "text"` | 打印到 `stdout`，帶尾隨換行符。 |
+| `eprint "text"` | 打印到 `stderr`，不帶尾隨換行符。 |
+| `eprintln "text"` | 打印到 `stderr`，帶尾隨換行符。 |
 
 #### 簡寫形式
 
 Zen C 允許直接將字符串字面量用作語句來進行快速打印：
 
-- `"Hello World"`: 等同於 `println "Hello World"`。(隱式添加換行符)
-- `"Hello World"..`: 等同於 `print "Hello World"`。(不帶尾隨換行符)
-- `!"Error"`: 等同於 `eprintln "Error"`。(輸出到 stderr)
-- `!"Error"..`: 等同於 `eprint "Error"`。(輸出到 stderr，不帶換行符)
+| 語法 | 等效項 | 描述 |
+|:---|:---|:---|
+| `"Hello World"` | `println "Hello World"` | 隱式添加換行符。 |
+| `"Hello World"..` | `print "Hello World"` | 不帶尾隨換行符。 |
+| `!"Error"` | `eprintln "Error"` | 輸出到 stderr。 |
+| `!"Error"..` | `eprint "Error"` | 輸出到 stderr，不帶換行符。 |
 
 #### 字符串插值 (F-strings)
 
@@ -651,6 +689,7 @@ let f = fopen("file.txt", "r");
 defer fclose(f);
 ```
 
+> [!WARNING]
 > 為了防止未定義行為，`defer` 塊內不允許使用控制流語句（`return`, `break`, `continue`, `goto`）。
 
 #### Autofree
@@ -668,6 +707,7 @@ Zen C 將帶有析構函數（如 `File`, `Vec`, 或 malloc 的指針）的類�
 **診斷與哲學**：
 如果你看到錯誤 "Use of moved value"，編譯器是在告訴你：*"此類型擁有一個資源（如內存或句柄），盲目複製它是不安全的。"*
 
+> [!NOTE]
 > **對比：** 與 C/C++ 不同，Zen C 不會隱式複製擁有資源的值。
 
 **函數參數**：
@@ -724,6 +764,30 @@ impl Point {
         return sqrt(self.x * self.x + self.y * self.y);
     }
 }
+```
+
+**Self 簡寫**: 在具有 `self` 參數的方法中，可以使用 `.欄位` 作為 `self.欄位` 的簡寫：
+```zc
+impl Point {
+    fn dist(self) -> float {
+        return sqrt(.x * .x + .y * .y);  // 等同於 self.x, self.y
+    }
+}
+```
+
+#### 原始類型方法
+Zen C 允許你使用相同的 `impl` 語法在原始類型（如 `int`、`bool` 等）上定義方法。
+
+```zc
+impl int {
+    fn abs(self) -> int {
+        return *self < 0 ? -(*self) : *self;
+    }
+}
+
+let x = -10;
+let y = x.abs(); // 10
+let z = (-5).abs(); // 5 (Literals supported)
 ```
 
 #### Trait
@@ -802,13 +866,13 @@ impl Drop for Resource {
 }
 ```
 
-> **注意：** 如果一個變量被移動，則原始變量不會調用 `drop`。它遵循 [資源語義](#資源語義-默認移動)。
+> [!NOTE] 如果一個變量被移動，則原始變量不會調用 `drop`。它遵循 [資源語義](#資源語義-默認移動)。
 
 **Copy**
 
 標記 Trait，用於選擇支持 `Copy` 行為（隱式複製）而不是移動語義。通過 `@derive(Copy)` 使用。
 
-> **規則：** 實現了 `Copy` 的類型不得定義析構函數 (`Drop`)。
+> [!CAUTION] 實現了 `Copy` 的類型不得定義析構函數 (`Drop`)。
 
 ```zc
 @derive(Copy)
@@ -901,15 +965,52 @@ fn main() {
 ### 12. 元編程
 
 #### Comptime
-在編譯時運行代碼以生成源碼或打印消息。
+在編譯時運行程式碼以生成原始碼或列印訊息。
 ```zc
 comptime {
-    // 在編譯時生成代碼 (寫入 stdout)
+    // 在編譯時生成程式碼(寫入 stdout)
     println "let build_date = \"2024-01-01\";";
 }
 
-println "構建日期: {build_date}";
+println "Build Date: {build_date}";
 ```
+
+**輔助函式**
+
+`comptime` 區塊內可用的特殊函式:
+- **`yield(str)`** - 明確輸出生成的程式碼(printf 的替代方案)
+- **`compile_error(msg)`** - 以致命錯誤訊息停止編譯
+- **`compile_warn(msg)`** - 發出編譯時警告(允許繼續編譯)
+
+```zc
+comptime {
+    compile_warn("正在生成最佳化程式碼...");
+    
+    let ENABLE_FEATURE = 1;
+    if (ENABLE_FEATURE == 0) {
+        compile_error("必須啟用功能!");
+    }
+    
+    println "let FEATURE_ENABLED = 1;";
+}
+```
+
+**構建元數據**
+
+在編譯時存取編譯器構建資訊:
+- **`__COMPTIME_TARGET__`** - 平台字串: `"linux"`, `"windows"` 或 `"macos"`
+- **`__COMPTIME_FILE__`** - 當前正在編譯的原始檔案名稱
+
+```zc
+comptime {
+    // 平台特定的程式碼生成
+    println "let PLATFORM = \"{__COMPTIME_TARGET__}\";";
+}
+
+println "運行於: {PLATFORM}";
+```
+
+> [!TIP] 在 comptime 字串內使用 `{{` 和 `}}` 來轉義大括號。
 
 #### Embed
 將文件嵌入為指定類型。
@@ -933,7 +1034,7 @@ let re = regex! { ^[a-z]+$ };
 #### 泛型 C 宏
 將預處理器宏傳遞給 C。
 
-> **提示**：對於簡單的常量，請使用 `def`。當你需要 C 預處理器宏或條件編譯標誌時，請使用 `#define`。
+> [!TIP]對於簡單的常量，請使用 `def`。當你需要 C 預處理器宏或條件編譯標誌時，請使用 `#define`。
 
 ```zc
 #define MAX_BUFFER 1024
@@ -1037,7 +1138,7 @@ fn add_five(x: int) -> int {
 | **破壞** | `: clobber("rax")` | `"rax"` |
 | **內存** | `: clobber("memory")` | `"memory"` |
 
-> **注意：** 使用 Intel 語法時（通過 `-masm=intel`），必須確保你的構建配置正確（例如，`//> cflags: -masm=intel`）。TCC 不支持 Intel 語法的匯編。
+> [!NOTE] 使用 Intel 語法時（通過 `-masm=intel`），必須確保你的構建配置正確（例如，`//> cflags: -masm=intel`）。TCC 不支持 Intel 語法的匯編。
 
 ### 15. 構建指令
 
@@ -1130,7 +1231,7 @@ fn main() {
 }
 ```
 
-> **優點**: 零樣板代碼。立即訪問頭文件中的所有內容。
+> [!NOTE] 零樣板代碼。立即訪問頭文件中的所有內容。
 > **缺點**: Zen C 不提供類型安全 (錯誤將在稍後由 C 編譯器捕獲)。
 
 #### 方法 2: 顯式 FFI (安全)
@@ -1148,7 +1249,7 @@ fn main() {
 }
 ```
 
-> **優點**: Zen C 確保類型匹配。
+> [!NOTE] Zen C 確保類型匹配。
 > **缺點**: 需要手動聲明函數。
 
 #### `import` vs `include`
@@ -1166,6 +1267,9 @@ Zen C 包含一個涵蓋基本功能的標準庫 (`std`)。
 [瀏覽標準庫文檔](../docs/std/README.md)
 
 ### 核心模塊
+
+<details>
+<summary>點擊查看所有標準庫模塊</summary>
 
 | 模塊 | 描述 | 文檔 |
 | :--- | :--- | :--- |
@@ -1186,6 +1290,9 @@ Zen C 包含一個涵蓋基本功能的標準庫 (`std`)。
 | **`std/stack.zc`** | 後進先出棧 `Stack<T>`。 | [文檔](../docs/std/stack.md) |
 | **`std/set.zc`** | 泛型哈希集合 `Set<T>`。 | [文檔](../docs/std/set.md) |
 | **`std/process.zc`** | 進程執行與管理。 | [文檔](../docs/std/process.md) |
+| **`std/regex.zc`** | 正則表達式 (基於 TRE)。 | [文檔](../docs/std/regex.md) |
+
+</details>
 
 ---
 
@@ -1266,14 +1373,20 @@ zc run app.zc --cc zig
 
 ### 測試套件狀態
 
+<details>
+<summary>點擊查看編譯器支持詳情</summary>
+
 | 編譯器 | 通過率 | 受支持特性 | 已知局限性 |
 |:---|:---:|:---|:---|
-| **GCC** | **100%** | 所有特性 | 無。 |
-| **Clang** | **100%** | 所有特性 | 無。 |
-| **Zig** | **100%** | 所有特性 | 無。使用 `zig cc` 作為替代 C 編譯器。 |
-| **TCC** | **~70%** | 基本語法, 泛型, Trait | 不支持 `__auto_type`, 不支持 Intel ASM, 不支持嵌套函數。 |
+| **GCC** | **100% (全面)** | 所有特性 | 無. |
+| **Clang** | **100% (全面)** | 所有特性 | 無. |
+| **Zig** | **100% (全面)** | 所有特性 | 無. 使用 `zig cc` 作為替代 C 編譯器. |
+| **TCC** | **98% (高)** | 結構體, 泛型, Trait, 模式匹配 | 不支持 Intel ASM, 不支持 `__attribute__((constructor))`. |
 
-> **建議：** 生產環境構建請使用 **GCC**, **Clang**, 或 **Zig**。TCC 非常適合快速原型開發，因為它編譯速度極快，但缺少 Zen C 全面支持所需的一些高級 C 擴展。
+</details>
+
+> [!WARNING]
+> **編譯器構建警告：** 雖然 **Zig CC** 作為 Zen C 程序的後端非常出色，但使用它構建 *Zen C 編譯器本身*可能會通過驗證，但會生成無法通過測試的不穩定二進制文件。我們建議使用 **GCC** 或 **Clang** 構建編譯器，並僅將 Zig 用作操作代碼的後端。
 
 ### 使用 Zig 構建
 
@@ -1414,6 +1527,7 @@ let tid = local_id();
 ```
 
 
+> [!NOTE]
 > **注意：** `--cuda` 標誌設置 `nvcc` 為編譯器並隱含 `--cpp` 模式。需要安裝 NVIDIA CUDA Toolkit。
 
 ### C23 支援
@@ -1453,6 +1567,7 @@ fn main() {
 }
 ```
 
+> [!NOTE]
 > **注意：** Zen C 字符串插值通過調用 `debugDescription` 或 `description` 同樣適用於 Objective-C 對象 (`id`)。
 
 ---
@@ -1461,35 +1576,13 @@ fn main() {
 
 我們歡迎各類貢獻！無論是修復 Bug、完善文檔，還是提出新功能建議。
 
-### 如何貢獻
-1.  **Fork 倉庫**：標準的 GitHub 工作流程。
-2.  **創建功能分支**：`git checkout -b feature/NewThing`。
-3.  **代碼規範**：
-    *   遵循現有的 C 風格。
-    *   確保所有測試通過：`make test`。
-    *   在 `tests/` 中為你的功能添加新測試。
-4.  **提交拉取請求**：清晰地描述你的更改。
+請參閱 [CONTRIBUTING_ZH_TW.md](CONTRIBUTING_ZH_TW.md) 了解有關如何貢獻、運行測試和提交拉取請求的詳細指南。
 
-### 運行測試
-測試套件是你最好的朋友。
+---
 
-```bash
-# 運行所有測試 (GCC)
-make test
+## 安全
 
-# 運行特定的測試
-./zc run tests/test_match.zc
-
-# 使用不同的編譯器運行
-./tests/run_tests.sh --cc clang
-./tests/run_tests.sh --cc zig
-./tests/run_tests.sh --cc tcc
-```
-
-### 擴展編譯器
-*   **解析器 (Parser)**：`src/parser/` - 遞歸下降解析器。
-*   **代碼生成 (Codegen)**：`src/codegen/` - 轉譯邏輯 (Zen C -> GNU C/C11)。
-*   **標準庫 (Standard Library)**：`std/` - 使用 Zen C 本身編寫。
+關於安全漏洞報告的說明，請參閱 [SECURITY_ZH_TW.md](SECURITY_ZH_TW.md)。
 
 ---
 
@@ -1500,3 +1593,18 @@ make test
 *   **[cJSON](https://github.com/DaveGamble/cJSON)** (MIT 許可證)：用於語言服務器中的 JSON 解析和生成。
 *   **[zc-ape](https://github.com/OEvgeny/zc-ape)** (MIT 許可證)：由 [Eugene Olonov](https://github.com/OEvgeny) 開發的原版 Zen-C 實際上便攜的可執行文件 (APE) 端口。
 *   **[Cosmopolitan Libc](https://github.com/jart/cosmopolitan)** (ISC 許可證)：使 APE 成為可能納基礎庫。
+*   **[TRE](https://github.com/laurikari/tre)** (BSD 許可證)：用於標準庫中的正則表達式引擎。
+
+---
+
+<div align="center">
+  <p>
+    Copyright © 2026 Zen C 編程語言。<br>
+    今天就開始你的旅程。
+  </p>
+  <p>
+    <a href="https://discord.com/invite/q6wEsCmkJP">Discord</a> •
+    <a href="https://github.com/z-libs/Zen-C">GitHub</a> •
+    <a href="CONTRIBUTING_ZH_TW.md">貢獻</a>
+  </p>
+</div>

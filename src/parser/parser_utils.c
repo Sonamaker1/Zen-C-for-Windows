@@ -2,8 +2,150 @@
 #include "../codegen/codegen.h"
 #include "../plugins/plugin_manager.h"
 #include "parser.h"
-#include <ctype.h>
-#include <stdio.h>
+#include "analysis/const_fold.h"
+
+static int is_unmangle_primitive(const char *base);
+
+void try_parse_macro_const(ParserContext *ctx, const char *content)
+{
+    Lexer l;
+    lexer_init(&l, content);
+    l.emit_comments = 0;
+
+    lexer_next(&l); // Skip start
+
+    // Manual skip of #
+    const char *p = content;
+    while (isspace(*p))
+    {
+        p++;
+    }
+    if (*p == '#')
+    {
+        p++;
+    }
+
+    // Now lex the rest
+    lexer_init(&l, p);
+
+    // Expect 'define'
+    Token def = lexer_next(&l);
+    if (def.type != TOK_IDENT || strncmp(def.start, "define", 6) != 0)
+    {
+        return;
+    }
+
+    // Expect NAME
+    Token name = lexer_next(&l);
+    if (name.type != TOK_IDENT)
+    {
+        return;
+    }
+
+    const char *after_name = name.start + name.len;
+    if (*after_name == '(')
+    {
+        return; // Function-like macro definition
+    }
+
+    // Check remaining tokens for SAFETY
+    Lexer check_l = l;
+    int balance = 0;
+    while (1)
+    {
+        Token ct = lexer_next(&check_l);
+        if (ct.type == TOK_EOF)
+        {
+            break;
+        }
+        if (ct.type == TOK_LPAREN)
+        {
+            balance++;
+        }
+        else if (ct.type == TOK_RPAREN)
+        {
+            balance--;
+        }
+        else if (ct.type == TOK_LBRACE || ct.type == TOK_RBRACE || ct.type == TOK_SEMICOLON)
+        {
+            return; // Unsafe or complex
+        }
+
+        // Safety check for C casts/pointers that cause compiler crash in expression parser
+        if (ct.type == TOK_IDENT)
+        {
+            char *tok_str = token_strdup(ct);
+            int is_prim = is_primitive_type_name(tok_str);
+
+            // Check other keywords not covered by is_primitive_type_name
+            if (!is_prim)
+            {
+                if (is_token(ct, "signed") || is_token(ct, "unsigned") || is_token(ct, "struct") ||
+                    is_token(ct, "union") || is_token(ct, "enum") || is_token(ct, "const") ||
+                    is_token(ct, "volatile") || is_token(ct, "extern") || is_token(ct, "static") ||
+                    is_token(ct, "register") || is_token(ct, "auto") || is_token(ct, "typedef"))
+                {
+                    is_prim = 1;
+                }
+            }
+
+            free(tok_str);
+
+            if (is_prim)
+            {
+                return;
+            }
+        }
+    }
+    if (balance != 0)
+    {
+        return; // Unbalanced
+    }
+
+    // Ensure we have something to parse
+    if (lexer_peek(&l).type == TOK_EOF)
+    {
+        return;
+    }
+
+    // Try parse expression
+    // We need to handle potential parsing errors gracefully.
+    // If parse_expression errors, zpanic unwinds.
+    // But we filtered hopefully unsafe tokens.
+
+    ASTNode *expr = parse_expression(ctx, &l);
+    if (!expr)
+    {
+        return;
+    }
+
+    long long val;
+    if (eval_const_int_expr(expr, ctx, &val))
+    {
+        // Success! Register as constant.
+        char *n = token_strdup(name);
+
+        // Check if already defined?
+        ZenSymbol *existing = find_symbol_entry(ctx, n);
+        if (!existing)
+        {
+            // Add to symbol table
+            add_symbol(ctx, n, "int", type_new(TYPE_INT)); // Placeholder type
+            // find_symbol_entry to set properties
+            ZenSymbol *sym = find_symbol_entry(ctx, n);
+            if (sym)
+            {
+                sym->is_const_value = 1;
+                sym->const_int_val = (int)val;
+                sym->is_def = 1;
+            }
+        }
+        else
+        {
+            free(n);
+        }
+    }
+}
 #include <stdlib.h>
 #include <string.h>
 
@@ -11,7 +153,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                          const char *mangled_struct_name, const char *arg,
                          const char *unmangled_arg);
 
-Token expect(Lexer *l, TokenType type, const char *msg)
+Token expect(Lexer *l, ZenTokenType type, const char *msg)
 {
     Token t = lexer_next(l);
     if (t.type != type)
@@ -20,6 +162,188 @@ Token expect(Lexer *l, TokenType type, const char *msg)
         return (Token){type, t.start, 0, t.line, t.col};
     }
     return t;
+}
+
+// Helper to check if a type name is a primitive type
+int is_primitive_type_name(const char *name)
+{
+    if (!name)
+    {
+        return 0;
+    }
+
+    return strcmp(name, "int") == 0 || strcmp(name, "i32") == 0 || strcmp(name, "u8") == 0 ||
+           strcmp(name, "i8") == 0 || strcmp(name, "i16") == 0 || strcmp(name, "u16") == 0 ||
+           strcmp(name, "u32") == 0 || strcmp(name, "i64") == 0 || strcmp(name, "u64") == 0 ||
+           strcmp(name, "f32") == 0 || strcmp(name, "float") == 0 || strcmp(name, "f64") == 0 ||
+           strcmp(name, "double") == 0 || strcmp(name, "void") == 0 || strcmp(name, "bool") == 0 ||
+           strcmp(name, "char") == 0 || strcmp(name, "usize") == 0 || strcmp(name, "isize") == 0 ||
+           strcmp(name, "uint") == 0 || strcmp(name, "byte") == 0 ||
+           // C-style types returned by type_to_string
+           strcmp(name, "int8_t") == 0 || strcmp(name, "uint8_t") == 0 ||
+           strcmp(name, "int16_t") == 0 || strcmp(name, "uint16_t") == 0 ||
+           strcmp(name, "int32_t") == 0 || strcmp(name, "uint32_t") == 0 ||
+           strcmp(name, "int64_t") == 0 || strcmp(name, "uint64_t") == 0 ||
+           strcmp(name, "size_t") == 0 || strcmp(name, "ptrdiff_t") == 0;
+}
+
+// Forward declaration
+char *ast_to_string(ASTNode *node);
+
+// Temporary lightweight AST printer for default args
+// Comprehensive AST printer for default args and other code generation needs
+char *ast_to_string(ASTNode *node)
+{
+    if (!node)
+    {
+        return xstrdup("");
+    }
+
+    char *buf = xmalloc(4096);
+    buf[0] = 0;
+
+    switch (node->type)
+    {
+    case NODE_EXPR_LITERAL:
+        if (node->literal.type_kind == LITERAL_INT)
+        {
+            sprintf(buf, "%llu", node->literal.int_val);
+        }
+        else if (node->literal.type_kind == LITERAL_FLOAT)
+        {
+            sprintf(buf, "%f", node->literal.float_val);
+        }
+        else if (node->literal.type_kind == LITERAL_STRING)
+        {
+            sprintf(buf, "\"%s\"", node->literal.string_val);
+        }
+        else if (node->literal.type_kind == LITERAL_CHAR)
+        {
+            if (node->literal.int_val == '\'')
+            {
+                sprintf(buf, "'\\''");
+            }
+            else if (node->literal.int_val == '\n')
+            {
+                sprintf(buf, "'\\n'");
+            }
+            else if (node->literal.int_val == '\\')
+            {
+                sprintf(buf, "'\\\\'");
+            }
+            else if (node->literal.int_val == '\0')
+            {
+                sprintf(buf, "'\\0'");
+            }
+            else
+            {
+                sprintf(buf, "'%c'", (char)node->literal.int_val);
+            }
+        }
+        break;
+    case NODE_EXPR_VAR:
+        strcpy(buf, node->var_ref.name);
+        break;
+    case NODE_EXPR_BINARY:
+    {
+        char *l = ast_to_string(node->binary.left);
+        char *r = ast_to_string(node->binary.right);
+        // Add parens to be safe
+        sprintf(buf, "(%s %s %s)", l, node->binary.op, r);
+        free(l);
+        free(r);
+        break;
+    }
+    case NODE_EXPR_UNARY:
+    {
+        char *o = ast_to_string(node->unary.operand);
+        sprintf(buf, "(%s%s)", node->unary.op, o);
+        free(o);
+        break;
+    }
+    case NODE_EXPR_CAST:
+    {
+        char *e = ast_to_string(node->cast.expr);
+        sprintf(buf, "((%s)%s)", node->cast.target_type, e);
+        free(e);
+        break;
+    }
+    case NODE_EXPR_CALL:
+    {
+        char *callee = ast_to_string(node->call.callee);
+        sprintf(buf, "%s(", callee);
+        free(callee);
+
+        ASTNode *arg = node->call.args;
+        int first = 1;
+        while (arg)
+        {
+            if (!first)
+            {
+                strcat(buf, ", ");
+            }
+            char *a = ast_to_string(arg);
+            if (strlen(buf) + strlen(a) < 4090)
+            {
+                strcat(buf, a);
+            }
+            free(a);
+            first = 0;
+            arg = arg->next;
+        }
+        strcat(buf, ")");
+        break;
+    }
+    case NODE_EXPR_STRUCT_INIT:
+    {
+        char *name = node->struct_init.struct_name;
+        sprintf(buf, "%s{", name);
+
+        ASTNode *field = node->struct_init.fields;
+        int first = 1;
+        while (field)
+        {
+            if (!first)
+            {
+                strcat(buf, ", ");
+            }
+
+            if (field->type == NODE_VAR_DECL)
+            {
+                strcat(buf, field->var_decl.name);
+                strcat(buf, ": ");
+                char *val = ast_to_string(field->var_decl.init_expr);
+                strcat(buf, val);
+                free(val);
+            }
+
+            first = 0;
+            field = field->next;
+        }
+        strcat(buf, "}");
+        break;
+    }
+    case NODE_EXPR_MEMBER:
+    {
+        char *t = ast_to_string(node->member.target);
+        sprintf(buf, "%s.%s", t, node->member.field);
+        free(t);
+        break;
+    }
+    case NODE_EXPR_INDEX:
+    {
+        char *arr = ast_to_string(node->index.array);
+        char *idx = ast_to_string(node->index.index);
+        sprintf(buf, "%s[%s]", arr, idx);
+        free(arr);
+        free(idx);
+        break;
+    }
+    default:
+        // Minimal fallback
+        break;
+    }
+    return buf;
 }
 
 int is_token(Token t, const char *s)
@@ -45,7 +369,7 @@ void skip_comments(Lexer *l)
 }
 
 // C reserved words that conflict with C when used as identifiers.
-// TODO: We gotta work on these.
+
 static const char *C_RESERVED_WORDS[] = {
     // C types that could be used as names
     "double", "float", "signed", "unsigned", "short", "long", "auto", "register",
@@ -428,7 +752,7 @@ TypeAlias *find_type_alias_node(ParserContext *ctx, const char *alias)
     {
         if (strcmp(ta->alias, alias) == 0)
         {
-            // printf("DEBUG: Found Alias '%s' (Opaque: %d)\n", alias, ta->is_opaque);
+
             return ta;
         }
         ta = ta->next;
@@ -511,10 +835,10 @@ void register_builtins(ParserContext *ctx)
     add_symbol(ctx, "ferror", "int", type_new(TYPE_INT));
     add_symbol(ctx, "usleep", "int", type_new(TYPE_INT));
 
-    // Register va_list as opaque struct
     ASTNode *va_def = ast_create(NODE_STRUCT);
     va_def->strct.name = xstrdup("va_list");
     register_struct_def(ctx, "va_list", va_def);
+    register_impl(ctx, "Copy", "va_list");
 }
 
 void add_instantiated_func(ParserContext *ctx, ASTNode *fn)
@@ -874,12 +1198,28 @@ char *extract_module_name(const char *path)
 #else
     // Non-Windows: keep existing behavior exactly
     const char *slash = strrchr(path, '/');
+    const char *backslash = strrchr(path, '\\');
+    if (backslash && (!slash || backslash > slash))
+    {
+        slash = backslash;
+    }
+
     const char *base = slash ? slash + 1 : path;
     const char *dot = strrchr(base, '.');
     int len = dot ? (int)(dot - base) : (int)strlen(base);
     char *name = xmalloc(len + 1);
     strncpy(name, base, len);
     name[len] = 0;
+
+    // Sanitize to ensure valid C identifier
+    for (int i = 0; i < len; i++)
+    {
+        if (!isalnum(name[i]))
+        {
+            name[i] = '_';
+        }
+    }
+
     return name;
 #endif
 }
@@ -1095,6 +1435,53 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
         }
     }
 
+    size_t len = strlen(src);
+    if (len > 0 && src[len - 1] == ']')
+    {
+        int depth = 0;
+        int bracket_idx = -1;
+        for (int i = len - 1; i >= 0; i--)
+        {
+            if (src[i] == ']')
+            {
+                depth++;
+            }
+            else if (src[i] == '[')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    bracket_idx = i;
+                    break;
+                }
+            }
+        }
+
+        if (bracket_idx > 0)
+        {
+            char *base = xmalloc(bracket_idx + 1);
+            strncpy(base, src, bracket_idx);
+            base[bracket_idx] = 0;
+
+            char *new_base = replace_type_str(base, param, concrete, old_struct, new_struct);
+
+            if (new_base && strcmp(new_base, base) != 0)
+            {
+                char *suffix = (char *)src + bracket_idx;
+                char *res = xmalloc(strlen(new_base) + strlen(suffix) + 1);
+                sprintf(res, "%s%s", new_base, suffix);
+                free(base);
+                free(new_base);
+                return res;
+            }
+            free(base);
+            if (new_base)
+            {
+                free(new_base);
+            }
+        }
+    }
+
     if (param && strcmp(src, param) == 0)
     {
 
@@ -1164,7 +1551,7 @@ char *replace_type_str(const char *src, const char *param, const char *concrete,
         }
     }
 
-    size_t len = strlen(src);
+    len = strlen(src);
     if (len > 1 && src[len - 1] == '*')
     {
         char *base = xmalloc(len);
@@ -1315,10 +1702,7 @@ Type *type_from_string_helper(const char *c)
     {
         return type_new(TYPE_UINT);
     }
-    if (strcmp(c, "double") == 0)
-    {
-        return type_new(TYPE_F64);
-    }
+
     if (strcmp(c, "byte") == 0)
     {
         return type_new(TYPE_BYTE);
@@ -1589,6 +1973,39 @@ ASTNode *copy_ast_replacing(ASTNode *n, const char *p, const char *c, const char
         new_node->func.args = tmp_args;
 
         new_node->func.ret_type_info = replace_type_formal(n->func.ret_type_info, p, c, os, ns);
+
+        // Deep copy default values AST if present
+        if (n->func.default_values && n->func.arg_count > 0)
+        {
+            new_node->func.default_values = xmalloc(sizeof(ASTNode *) * n->func.arg_count);
+            // We also need to regenerate the string defaults array based on the substituted ASTs
+            // This ensures potential generic params in default values (T{}) are updated (i32{})
+            // in the string representation used by codegen.
+            char **new_defaults_strs = xmalloc(sizeof(char *) * n->func.arg_count);
+
+            for (int i = 0; i < n->func.arg_count; i++)
+            {
+                if (n->func.default_values[i])
+                {
+                    new_node->func.default_values[i] =
+                        copy_ast_replacing(n->func.default_values[i], p, c, os, ns);
+                    new_defaults_strs[i] = ast_to_string(new_node->func.default_values[i]);
+                }
+                else
+                {
+                    new_node->func.default_values[i] = NULL;
+                    new_defaults_strs[i] = NULL;
+                }
+            }
+            // Replace the old string-based defaults with our regenerated ones
+            // Note: We leak the old 'tmp_args' calculated above, but that's just a single string
+            // for valid args The 'defaults' array in func struct is what matters for function
+            // definition. Wait, NODE_FUNCTION has char *args (legacy) AND char **defaults (array).
+            // parse_and_convert_args populated both.
+            // We need to update new_node->func.defaults.
+            new_node->func.defaults = new_defaults_strs;
+        }
+
         if (n->func.arg_types)
         {
             new_node->func.arg_types = xmalloc(sizeof(Type *) * n->func.arg_count);
@@ -1698,26 +2115,48 @@ ASTNode *copy_ast_replacing(ASTNode *n, const char *p, const char *c, const char
         new_node->cast.expr = copy_ast_replacing(n->cast.expr, p, c, os, ns);
         break;
     case NODE_EXPR_STRUCT_INIT:
-        new_node->struct_init.struct_name =
-            replace_type_str(n->struct_init.struct_name, p, c, os, ns);
-        ASTNode *h = NULL, *t = NULL, *curr = n->struct_init.fields;
-        while (curr)
+    {
+        char *new_name = replace_type_str(n->struct_init.struct_name, p, c, os, ns);
+
+        int is_ptr = 0;
+        size_t len = strlen(new_name);
+        if (len > 0 && new_name[len - 1] == '*')
         {
-            ASTNode *cp = copy_ast_replacing(curr, p, c, os, ns);
-            cp->next = NULL;
-            if (!h)
-            {
-                h = cp;
-            }
-            else
-            {
-                t->next = cp;
-            }
-            t = cp;
-            curr = curr->next;
+            is_ptr = 1;
         }
-        new_node->struct_init.fields = h;
+
+        int is_primitive = is_primitive_type_name(new_name);
+
+        if ((is_ptr || is_primitive) && !n->struct_init.fields)
+        {
+            new_node->type = NODE_EXPR_LITERAL;
+            new_node->literal.type_kind = LITERAL_INT;
+            new_node->literal.int_val = 0;
+            free(new_name);
+        }
+        else
+        {
+            new_node->struct_init.struct_name = new_name;
+            ASTNode *h = NULL, *t = NULL, *curr = n->struct_init.fields;
+            while (curr)
+            {
+                ASTNode *cp = copy_ast_replacing(curr, p, c, os, ns);
+                cp->next = NULL;
+                if (!h)
+                {
+                    h = cp;
+                }
+                else
+                {
+                    t->next = cp;
+                }
+                t = cp;
+                curr = curr->next;
+            }
+            new_node->struct_init.fields = h;
+        }
         break;
+    }
     case NODE_IF:
         new_node->if_stmt.condition = copy_ast_replacing(n->if_stmt.condition, p, c, os, ns);
         new_node->if_stmt.then_body = copy_ast_replacing(n->if_stmt.then_body, p, c, os, ns);
@@ -1775,35 +2214,7 @@ ASTNode *copy_ast_replacing(ASTNode *n, const char *p, const char *c, const char
             char *replaced = replace_type_str(n->size_of.target_type, p, c, os, ns);
             if (replaced && strchr(replaced, '<'))
             {
-                char *src = replaced;
-                char *mangled = xmalloc(strlen(src) * 2 + 1);
-                char *dst = mangled;
-                while (*src)
-                {
-                    if (*src == '<' || *src == ',')
-                    {
-                        *dst++ = '_';
-                        while (*(src + 1) == ' ')
-                        {
-                            src++; // skip space
-                        }
-                    }
-                    else if (*src == '>')
-                    {
-                        // skip
-                    }
-                    else if (*src == '*')
-                    {
-                        strcpy(dst, "Ptr");
-                        dst += 3;
-                    }
-                    else if (!isspace(*src))
-                    {
-                        *dst++ = *src;
-                    }
-                    src++;
-                }
-                *dst = 0;
+                char *mangled = sanitize_mangled_name(replaced);
                 free(replaced);
                 replaced = mangled;
             }
@@ -1836,9 +2247,13 @@ char *sanitize_mangled_name(const char *s)
             strcpy(p, "Ptr");
             p += 3;
         }
-        else if (*s == ' ')
+        else if (*s == '<' || *s == ',' || *s == ' ')
         {
             *p++ = '_';
+        }
+        else if (*s == '>' || *s == '&')
+        {
+            // Skip > and & (often used in references) to keep names clean
         }
         else if ((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') ||
                  *s == '_')
@@ -1877,13 +2292,7 @@ char *unmangle_ptr_suffix(const char *s)
     char *result = xmalloc(strlen(base) + 16);
 
     // Check if base is a primitive type
-    if (strcmp(base, "int") == 0 || strcmp(base, "char") == 0 || strcmp(base, "float") == 0 ||
-        strcmp(base, "double") == 0 || strcmp(base, "bool") == 0 || strcmp(base, "void") == 0 ||
-        strcmp(base, "size_t") == 0 || strcmp(base, "usize") == 0 ||
-        strncmp(base, "int8", 4) == 0 || strncmp(base, "int16", 5) == 0 ||
-        strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
-        strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
-        strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0)
+    if (is_primitive_type_name(base))
     {
         sprintf(result, "%s*", base);
     }
@@ -1938,9 +2347,9 @@ FuncSig *find_func(ParserContext *ctx, const char *name)
     return NULL;
 }
 
-// Helper function to recursively scan AST for sizeof types and trigger instantiation of generic
-// structs
-static void trigger_sizeof_instantiations(ParserContext *ctx, ASTNode *node)
+// Helper function to recursively scan AST for sizeof types AND generic calls to trigger
+// instantiation
+static void trigger_instantiations(ParserContext *ctx, ASTNode *node)
 {
     if (!node)
     {
@@ -2001,64 +2410,97 @@ static void trigger_sizeof_instantiations(ParserContext *ctx, ASTNode *node)
             free(type_copy);
         }
     }
+    else if (node->type == NODE_EXPR_VAR)
+    {
+        const char *name = node->var_ref.name;
+        if (strchr(name, '_'))
+        {
+            GenericFuncTemplate *t = ctx->func_templates;
+            while (t)
+            {
+                size_t tlen = strlen(t->name);
+                if (strncmp(name, t->name, tlen) == 0 && name[tlen] == '_')
+                {
+                    char *template_name = t->name;
+                    char *concrete_arg = (char *)name + tlen + 1; // cast to avoid warning
 
-    // Recursively visit children based on node type
+                    char *unmangled = unmangle_ptr_suffix(concrete_arg);
+                    instantiate_function_template(ctx, template_name, concrete_arg, unmangled);
+                    free(unmangled);
+                    break; // Found match, stop searching
+                }
+                t = t->next;
+            }
+        }
+    }
+
     switch (node->type)
     {
     case NODE_FUNCTION:
-        trigger_sizeof_instantiations(ctx, node->func.body);
+        trigger_instantiations(ctx, node->func.body);
         break;
     case NODE_BLOCK:
-        trigger_sizeof_instantiations(ctx, node->block.statements);
+        trigger_instantiations(ctx, node->block.statements);
         break;
     case NODE_VAR_DECL:
-        trigger_sizeof_instantiations(ctx, node->var_decl.init_expr);
+        trigger_instantiations(ctx, node->var_decl.init_expr);
         break;
     case NODE_RETURN:
-        trigger_sizeof_instantiations(ctx, node->ret.value);
+        trigger_instantiations(ctx, node->ret.value);
         break;
     case NODE_EXPR_BINARY:
-        trigger_sizeof_instantiations(ctx, node->binary.left);
-        trigger_sizeof_instantiations(ctx, node->binary.right);
+        trigger_instantiations(ctx, node->binary.left);
+        trigger_instantiations(ctx, node->binary.right);
         break;
     case NODE_EXPR_UNARY:
-        trigger_sizeof_instantiations(ctx, node->unary.operand);
+        trigger_instantiations(ctx, node->unary.operand);
         break;
     case NODE_EXPR_CALL:
-        trigger_sizeof_instantiations(ctx, node->call.callee);
-        trigger_sizeof_instantiations(ctx, node->call.args);
+        trigger_instantiations(ctx, node->call.callee);
+        trigger_instantiations(ctx, node->call.args);
         break;
     case NODE_EXPR_MEMBER:
-        trigger_sizeof_instantiations(ctx, node->member.target);
+        trigger_instantiations(ctx, node->member.target);
         break;
     case NODE_EXPR_INDEX:
-        trigger_sizeof_instantiations(ctx, node->index.array);
-        trigger_sizeof_instantiations(ctx, node->index.index);
+        trigger_instantiations(ctx, node->index.array);
+        trigger_instantiations(ctx, node->index.index);
         break;
     case NODE_EXPR_CAST:
-        trigger_sizeof_instantiations(ctx, node->cast.expr);
+        trigger_instantiations(ctx, node->cast.expr);
         break;
     case NODE_IF:
-        trigger_sizeof_instantiations(ctx, node->if_stmt.condition);
-        trigger_sizeof_instantiations(ctx, node->if_stmt.then_body);
-        trigger_sizeof_instantiations(ctx, node->if_stmt.else_body);
+        trigger_instantiations(ctx, node->if_stmt.condition);
+        trigger_instantiations(ctx, node->if_stmt.then_body);
+        trigger_instantiations(ctx, node->if_stmt.else_body);
         break;
     case NODE_WHILE:
-        trigger_sizeof_instantiations(ctx, node->while_stmt.condition);
-        trigger_sizeof_instantiations(ctx, node->while_stmt.body);
+        trigger_instantiations(ctx, node->while_stmt.condition);
+        trigger_instantiations(ctx, node->while_stmt.body);
         break;
     case NODE_FOR:
-        trigger_sizeof_instantiations(ctx, node->for_stmt.init);
-        trigger_sizeof_instantiations(ctx, node->for_stmt.condition);
-        trigger_sizeof_instantiations(ctx, node->for_stmt.step);
-        trigger_sizeof_instantiations(ctx, node->for_stmt.body);
+        trigger_instantiations(ctx, node->for_stmt.init);
+        trigger_instantiations(ctx, node->for_stmt.condition);
+        trigger_instantiations(ctx, node->for_stmt.step);
+        trigger_instantiations(ctx, node->for_stmt.body);
+        break;
+    case NODE_EXPR_STRUCT_INIT:
+        trigger_instantiations(ctx, node->struct_init.fields);
+        break;
+    case NODE_MATCH:
+        trigger_instantiations(ctx, node->match_stmt.expr);
+        trigger_instantiations(ctx, node->match_stmt.cases);
+        break;
+    case NODE_MATCH_CASE:
+        trigger_instantiations(ctx, node->match_case.guard);
+        trigger_instantiations(ctx, node->match_case.body);
         break;
     default:
         break;
     }
 
     // Visit next sibling
-    trigger_sizeof_instantiations(ctx, node->next);
+    trigger_instantiations(ctx, node->next);
 }
 
 char *instantiate_function_template(ParserContext *ctx, const char *name, const char *concrete_type,
@@ -2071,9 +2513,26 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
     }
 
     char *clean_type = sanitize_mangled_name(concrete_type);
+
+    int is_still_generic = 0;
+    if (strlen(clean_type) == 1 && isupper(clean_type[0]))
+    {
+        is_still_generic = 1;
+    }
+
+    if (is_known_generic(ctx, clean_type))
+    {
+        is_still_generic = 1;
+    }
+
     char *mangled = xmalloc(strlen(name) + strlen(clean_type) + 2);
     sprintf(mangled, "%s_%s", name, clean_type);
     free(clean_type);
+
+    if (is_still_generic)
+    {
+        return mangled;
+    }
 
     if (find_func(ctx, mangled))
     {
@@ -2158,14 +2617,7 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
                         base[alen - 3] = '\0';
                         free(unmangled);
                         unmangled = xmalloc(strlen(base) + 16);
-                        if (strcmp(base, "int") == 0 || strcmp(base, "char") == 0 ||
-                            strcmp(base, "float") == 0 || strcmp(base, "double") == 0 ||
-                            strcmp(base, "bool") == 0 || strcmp(base, "void") == 0 ||
-                            strcmp(base, "size_t") == 0 || strcmp(base, "usize") == 0 ||
-                            strncmp(base, "int8", 4) == 0 || strncmp(base, "int16", 5) == 0 ||
-                            strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
-                            strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
-                            strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0)
+                        if (is_unmangle_primitive(base))
                         {
                             sprintf(unmangled, "%s*", base);
                         }
@@ -2200,9 +2652,21 @@ char *instantiate_function_template(ParserContext *ctx, const char *name, const 
         return NULL;
     }
 
-    // Scan the function body for sizeof expressions and trigger instantiation
-    // of any generic structs referenced there (e.g., sizeof(RcInner_int32_t))
-    trigger_sizeof_instantiations(ctx, new_fn->func.body);
+    trigger_instantiations(ctx, new_fn->func.body);
+
+    if (new_fn->func.arg_types)
+    {
+        for (int i = 0; i < new_fn->func.arg_count; i++)
+        {
+            Type *at = new_fn->func.arg_types[i];
+            if (at && at->kind == TYPE_ARRAY && at->array_size == 0 && at->inner)
+            {
+                char *inner_str = type_to_string(at->inner);
+                register_slice(ctx, inner_str);
+                free(inner_str);
+            }
+        }
+    }
 
     free(new_fn->func.name);
     new_fn->func.name = xstrdup(mangled);
@@ -2376,6 +2840,21 @@ int check_impl(ParserContext *ctx, const char *trait, const char *strct)
         r = r->next;
     }
     return 0;
+}
+
+static int is_unmangle_primitive(const char *base)
+{
+    return (strcmp(base, "int") == 0 || strcmp(base, "uint") == 0 || strcmp(base, "char") == 0 ||
+            strcmp(base, "bool") == 0 || strcmp(base, "void") == 0 || strcmp(base, "byte") == 0 ||
+            strcmp(base, "rune") == 0 || strcmp(base, "float") == 0 ||
+            strcmp(base, "double") == 0 || strcmp(base, "f32") == 0 || strcmp(base, "f64") == 0 ||
+            strcmp(base, "size_t") == 0 || strcmp(base, "usize") == 0 ||
+            strcmp(base, "isize") == 0 || strcmp(base, "ptrdiff_t") == 0 ||
+            strncmp(base, "i8", 2) == 0 || strncmp(base, "u8", 2) == 0 ||
+            strncmp(base, "int8", 4) == 0 || strncmp(base, "int16", 5) == 0 ||
+            strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
+            strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
+            strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0);
 }
 
 void register_template(ParserContext *ctx, const char *name, ASTNode *node)
@@ -2576,14 +3055,7 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                         free(unmangled_arg);
                         unmangled_arg = xmalloc(strlen(base) + 16);
                         // Check if base is a primitive type
-                        if (strcmp(base, "int") == 0 || strcmp(base, "char") == 0 ||
-                            strcmp(base, "float") == 0 || strcmp(base, "double") == 0 ||
-                            strcmp(base, "bool") == 0 || strcmp(base, "void") == 0 ||
-                            strcmp(base, "size_t") == 0 || strcmp(base, "usize") == 0 ||
-                            strncmp(base, "int8", 4) == 0 || strncmp(base, "int16", 5) == 0 ||
-                            strncmp(base, "int32", 5) == 0 || strncmp(base, "int64", 5) == 0 ||
-                            strncmp(base, "uint8", 5) == 0 || strncmp(base, "uint16", 6) == 0 ||
-                            strncmp(base, "uint32", 6) == 0 || strncmp(base, "uint64", 6) == 0)
+                        if (is_unmangle_primitive(base))
                         {
                             sprintf(unmangled_arg, "%s*", base);
                         }
@@ -2601,6 +3073,8 @@ void instantiate_methods(ParserContext *ctx, GenericImplTemplate *it,
                 gt = gt->next;
             }
         }
+
+        trigger_instantiations(ctx, meth->func.body);
 
         meth = meth->next;
     }
@@ -2658,7 +3132,7 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
                                       : xstrdup(arg); // Fallback to arg if unmangled is generic
     ni->struct_node = NULL;                           // Placeholder to break cycles
     ni->next = ctx->instantiations;
-    ni->struct_node = NULL; // Duplicate assignment, ignore.
+
     ctx->instantiations = ni;
 
     ASTNode *struct_node_copy = NULL;
@@ -2691,6 +3165,18 @@ void instantiate_generic(ParserContext *ctx, const char *tpl, const char *arg,
         i->strct.fields = copy_fields_replacing(ctx, t->struct_node->strct.fields, gp, subst_arg);
         struct_node_copy = i;
         register_struct_def(ctx, m, i);
+
+        // Register slice types used in the instantiated struct's fields
+        ASTNode *fld = i->strct.fields;
+        while (fld)
+        {
+            if (fld->type == NODE_FIELD && fld->field.type &&
+                strncmp(fld->field.type, "Slice_", 6) == 0)
+            {
+                register_slice(ctx, fld->field.type + 6);
+            }
+            fld = fld->next;
+        }
     }
     else if (t->struct_node->type == NODE_ENUM)
     {
@@ -3425,9 +3911,9 @@ char *consume_and_rewrite(ParserContext *ctx, Lexer *l)
     return rw;
 }
 
-char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out, int *count_out,
-                             Type ***types_out, char ***names_out, int *is_varargs_out,
-                             char ***ctype_overrides_out)
+char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
+                             ASTNode ***default_values_out, int *count_out, Type ***types_out,
+                             char ***names_out, int *is_varargs_out, char ***ctype_overrides_out)
 {
     Token t = lexer_next(l);
     if (t.type != TOK_LPAREN)
@@ -3439,6 +3925,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     buf[0] = 0;
     int count = 0;
     char **defaults = xmalloc(sizeof(char *) * 16);
+    ASTNode **default_values = xmalloc(sizeof(ASTNode *) * 16);
     Type **types = xmalloc(sizeof(Type *) * 16);
     char **names = xmalloc(sizeof(char *) * 16);
     char **ctype_overrides = xmalloc(sizeof(char *) * 16);
@@ -3446,6 +3933,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     for (int i = 0; i < 16; i++)
     {
         defaults[i] = NULL;
+        default_values[i] = NULL;
         types[i] = NULL;
         names[i] = NULL;
         ctype_overrides[i] = NULL;
@@ -3496,27 +3984,93 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 {
                     Type *st = NULL;
                     // Check for primitives to avoid creating struct int*
-                    if (strcmp(ctx->current_impl_struct, "int") == 0)
+                    const char *is = ctx->current_impl_struct;
+                    if (strcmp(is, "int") == 0 || strcmp(is, "int32_t") == 0 ||
+                        strcmp(is, "i32") == 0 || strcmp(is, "I32") == 0)
                     {
                         st = type_new(TYPE_INT);
                     }
-                    else if (strcmp(ctx->current_impl_struct, "float") == 0)
+                    else if (strcmp(is, "uint") == 0 || strcmp(is, "uint32_t") == 0 ||
+                             strcmp(is, "u32") == 0 || strcmp(is, "U32") == 0)
+                    {
+                        st = type_new(TYPE_U32);
+                    }
+                    else if (strcmp(is, "float") == 0 || strcmp(is, "f32") == 0 ||
+                             strcmp(is, "F32") == 0)
                     {
                         st = type_new(TYPE_F32);
                     }
-                    else if (strcmp(ctx->current_impl_struct, "char") == 0)
+                    else if (strcmp(is, "double") == 0 || strcmp(is, "f64") == 0 ||
+                             strcmp(is, "F64") == 0)
+                    {
+                        st = type_new(TYPE_F64);
+                    }
+                    else if (strcmp(is, "char") == 0)
                     {
                         st = type_new(TYPE_CHAR);
                     }
-                    else if (strcmp(ctx->current_impl_struct, "bool") == 0)
+                    else if (strcmp(is, "bool") == 0)
                     {
                         st = type_new(TYPE_BOOL);
                     }
-                    else if (strcmp(ctx->current_impl_struct, "string") == 0)
+                    else if (strcmp(is, "string") == 0)
                     {
                         st = type_new(TYPE_STRING);
                     }
-                    // Add other primitives as needed
+                    else if (strcmp(is, "void") == 0)
+                    {
+                        st = type_new(TYPE_VOID);
+                    }
+                    else if (strcmp(is, "usize") == 0 || strcmp(is, "size_t") == 0)
+                    {
+                        st = type_new(TYPE_USIZE);
+                    }
+                    else if (strcmp(is, "isize") == 0 || strcmp(is, "ptrdiff_t") == 0)
+                    {
+                        st = type_new(TYPE_ISIZE);
+                    }
+                    else if (strcmp(is, "byte") == 0 || strcmp(is, "u8") == 0 ||
+                             strcmp(is, "U8") == 0 || strcmp(is, "uint8_t") == 0)
+                    {
+                        st = type_new(TYPE_U8);
+                    }
+                    else if (strcmp(is, "i8") == 0 || strcmp(is, "I8") == 0 ||
+                             strcmp(is, "int8_t") == 0)
+                    {
+                        st = type_new(TYPE_I8);
+                    }
+                    else if (strcmp(is, "i16") == 0 || strcmp(is, "I16") == 0 ||
+                             strcmp(is, "int16_t") == 0)
+                    {
+                        st = type_new(TYPE_I16);
+                    }
+                    else if (strcmp(is, "u16") == 0 || strcmp(is, "U16") == 0 ||
+                             strcmp(is, "uint16_t") == 0)
+                    {
+                        st = type_new(TYPE_U16);
+                    }
+                    else if (strcmp(is, "i64") == 0 || strcmp(is, "I64") == 0 ||
+                             strcmp(is, "int64_t") == 0 || strcmp(is, "long") == 0)
+                    {
+                        st = type_new(TYPE_I64);
+                    }
+                    else if (strcmp(is, "u64") == 0 || strcmp(is, "U64") == 0 ||
+                             strcmp(is, "uint64_t") == 0 || strcmp(is, "ulong") == 0)
+                    {
+                        st = type_new(TYPE_U64);
+                    }
+                    else if (strcmp(is, "i128") == 0 || strcmp(is, "I128") == 0)
+                    {
+                        st = type_new(TYPE_I128);
+                    }
+                    else if (strcmp(is, "u128") == 0 || strcmp(is, "U128") == 0)
+                    {
+                        st = type_new(TYPE_U128);
+                    }
+                    else if (strcmp(is, "rune") == 0)
+                    {
+                        st = type_new(TYPE_RUNE);
+                    }
                     else
                     {
                         st = type_new(TYPE_STRUCT);
@@ -3604,38 +4158,12 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
                 {
                     lexer_next(l); // consume =
 
-                    const char *start_ptr = lexer_peek(l).start;
-                    int nesting = 0;
-                    while (1)
-                    {
-                        Token t = lexer_peek(l);
-                        if (t.type == TOK_EOF)
-                        {
-                            zpanic_at(t, "Unexpected EOF in default arg");
-                        }
+                    // Parse the expression into an AST node
+                    ASTNode *def_node = parse_expression(ctx, l);
 
-                        if (nesting == 0 && (t.type == TOK_COMMA || t.type == TOK_RPAREN))
-                        {
-                            break;
-                        }
-
-                        if (t.type == TOK_LPAREN || t.type == TOK_LBRACE || t.type == TOK_LBRACKET)
-                        {
-                            nesting++;
-                        }
-                        if (t.type == TOK_RPAREN || t.type == TOK_RBRACE || t.type == TOK_RBRACKET)
-                        {
-                            nesting--;
-                        }
-
-                        lexer_next(l);
-                    }
-                    const char *end_ptr = lexer_peek(l).start;
-                    size_t len = end_ptr - start_ptr;
-                    char *def_val = xmalloc(len + 1);
-                    strncpy(def_val, start_ptr, len);
-                    def_val[len] = 0;
-                    defaults[count - 1] = def_val;
+                    // Store both the AST node and the reconstructed string for legacy support
+                    default_values[count - 1] = def_node;
+                    defaults[count - 1] = ast_to_string(def_node);
                 }
             }
             if (lexer_peek(l).type == TOK_COMMA)
@@ -3669,6 +4197,7 @@ char *parse_and_convert_args(ParserContext *ctx, Lexer *l, char ***defaults_out,
     }
 
     *defaults_out = defaults;
+    *default_values_out = default_values;
     *count_out = count;
     *types_out = types;
     *names_out = names;
@@ -3725,14 +4254,14 @@ void register_plugin(ParserContext *ctx, const char *name, const char *alias)
         if (!plugin)
         {
             char path[1024];
-            snprintf(path, sizeof(path), "%s.so", name);
+            snprintf(path, sizeof(path), "%s%s", name, z_get_plugin_ext());
             plugin = zptr_load_plugin(path);
         }
 
         if (!plugin && !strchr(name, '/'))
         {
             char path[1024];
-            snprintf(path, sizeof(path), "./%s.so", name);
+            snprintf(path, sizeof(path), "%s%s%s", z_get_run_prefix(), name, z_get_plugin_ext());
             plugin = zptr_load_plugin(path);
         }
     }
@@ -3806,4 +4335,107 @@ int validate_types(ParserContext *ctx)
         u = u->next;
     }
     return errors == 0;
+}
+
+const char *normalize_type_name(const char *name)
+{
+    if (!name)
+    {
+        return NULL;
+    }
+
+    // Zen Primitives & Aliases
+    if (strcmp(name, "int") == 0)
+    {
+        return "int32_t";
+    }
+    if (strcmp(name, "uint") == 0)
+    {
+        return "uint32_t";
+    }
+    if (strcmp(name, "short") == 0)
+    {
+        return "int16_t";
+    }
+    if (strcmp(name, "ushort") == 0)
+    {
+        return "uint16_t";
+    }
+    if (strcmp(name, "long") == 0)
+    {
+        return "int64_t";
+    }
+    if (strcmp(name, "ulong") == 0)
+    {
+        return "uint64_t";
+    }
+
+    // Terse aliases
+    if (strcmp(name, "i8") == 0 || strcmp(name, "I8") == 0)
+    {
+        return "int8_t";
+    }
+    if (strcmp(name, "u8") == 0 || strcmp(name, "U8") == 0)
+    {
+        return "uint8_t";
+    }
+    if (strcmp(name, "i16") == 0 || strcmp(name, "I16") == 0)
+    {
+        return "int16_t";
+    }
+    if (strcmp(name, "u16") == 0 || strcmp(name, "U16") == 0)
+    {
+        return "uint16_t";
+    }
+    if (strcmp(name, "i32") == 0 || strcmp(name, "I32") == 0)
+    {
+        return "int32_t";
+    }
+    if (strcmp(name, "u32") == 0 || strcmp(name, "U32") == 0)
+    {
+        return "uint32_t";
+    }
+    if (strcmp(name, "i64") == 0 || strcmp(name, "I64") == 0)
+    {
+        return "int64_t";
+    }
+    if (strcmp(name, "u64") == 0 || strcmp(name, "U64") == 0)
+    {
+        return "uint64_t";
+    }
+
+    if (strcmp(name, "usize") == 0)
+    {
+        return "size_t";
+    }
+    if (strcmp(name, "isize") == 0)
+    {
+        return "ptrdiff_t";
+    }
+    if (strcmp(name, "byte") == 0)
+    {
+        return "uint8_t";
+    }
+    if (strcmp(name, "rune") == 0)
+    {
+        return "int32_t";
+    }
+    if (strcmp(name, "i128") == 0 || strcmp(name, "I128") == 0)
+    {
+        return "__int128";
+    }
+    if (strcmp(name, "u128") == 0 || strcmp(name, "U128") == 0)
+    {
+        return "unsigned __int128";
+    }
+    if (strcmp(name, "u0") == 0 || strcmp(name, "U0") == 0)
+    {
+        return "void";
+    }
+    if (strcmp(name, "string") == 0)
+    {
+        return "char*";
+    }
+
+    return name;
 }

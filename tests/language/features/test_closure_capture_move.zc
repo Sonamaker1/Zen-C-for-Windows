@@ -1,0 +1,23 @@
+// EXPECT: FAIL
+
+struct Mover {
+  val: int
+}
+
+fn consume(func: fn()) {
+  func()
+}
+
+fn main() {
+  let m = Mover { val: 10 }
+  
+  // Capture by value should move 'm'
+  consume(fn[=]() {
+     let x = m.val 
+  })
+
+  // 'm' is moved, this should fail
+  consume(fn[=]() {
+     let y = m.val
+  })
+}

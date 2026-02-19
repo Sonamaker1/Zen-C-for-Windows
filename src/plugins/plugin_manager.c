@@ -48,6 +48,8 @@ typedef struct PluginNode
 
 static PluginNode *head = NULL;
 
+#include "../platform/os.h"
+
 void zptr_plugin_mgr_init(void)
 {
     head = NULL;

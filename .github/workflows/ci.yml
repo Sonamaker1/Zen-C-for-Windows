@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install and Run clang-format
+      run: |
+        sudo apt-get update && sudo apt-get install -y clang-format
+        find src -name '*.c' -o -name '*.h' | xargs clang-format --dry-run --Werror
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux GCC
+            os: ubuntu-latest
+            cc: gcc
+          - name: Linux Clang
+            os: ubuntu-latest
+            cc: clang
+          - name: Linux Zig CC
+            os: ubuntu-latest
+            cc: zig cc
+            setup_zig: true
+          - name: Linux TCC
+            os: ubuntu-latest
+            cc: tcc
+            install_tcc: true
+          - name: macOS
+            os: macos-15-intel
+            cc: cc # System default (usually clang)
+          - name: Self-Hosted
+            os: self-hosted
+            cc: gcc # Default
+          - name: Windows MinGW
+            os: windows-latest
+            cc: gcc
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Zig
+      if: matrix.setup_zig
+      uses: goto-bus-stop/setup-zig@v2
+      with:
+        version: master
+
+    - name: Install TCC (Source)
+      if: matrix.install_tcc
+      run: |
+        sudo apt-get update && sudo apt-get install -y git make gcc
+        git clone -b mob https://github.com/TinyCC/tinycc.git
+        cd tinycc
+        ./configure
+        make
+        sudo make install
+
+    - name: Build
+      shell: bash
+      run: |
+        if [ "${{ matrix.cc }}" = "zig cc" ]; then
+           make  # Build zc with default CC (stable), but test zc using zig cc backend
+        elif [ "${{ runner.os }}" = "Windows" ]; then
+           ./build.bat
+        else
+           make CC="${{ matrix.cc }}"
+        fi
+
+    - name: Run Tests
+      shell: bash
+      run: |
+        if [ "${{ runner.os }}" = "Windows" ]; then
+          ./tests/scripts/run_tests.sh --cc "gcc" -Istd/third-party/tre/include -Istd std/third-party/tre/lib/*.c
+        else
+          ./tests/scripts/run_tests.sh --cc "${{ matrix.cc }}" -Istd/third-party/tre/include -Istd obj/std/third-party/tre/lib/*.o
+        fi
+
+  ape:
+    name: Build APE
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: APE dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y zip wget
+
+    - name: Setup cosmocc
+      run: |
+        wget https://cosmo.zip/pub/cosmocc/cosmocc.zip
+        mkdir -p $HOME/cosmocc
+        unzip cosmocc.zip -d $HOME/cosmocc
+        echo "$HOME/cosmocc/bin" >> $GITHUB_PATH
+
+    - name: Build APE
+      run: |
+        export PATH="$HOME/cosmocc/bin:$PATH"
+        make clean
+        make ape
+
+    - name: Upload zc.com Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zc-portable
+        path: out/bin/zc.com
+
+    - name: Upload zc-boot.com Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: zc-boot-portable
+        path: out/bin/zc-boot.com
+
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          out/bin/zc.com
+          out/bin/zc-boot.com
+        draft: false
+        prerelease: false
+        generate_release_notes: true

@@ -31,6 +31,70 @@ Transpile to C code only without compiling to an executable.
 .TP
 .B lsp
 Start the Language Server Protocol daemon for editor integration.
+.SH REPL COMMANDS
+When running in
+.B repl
+mode, the following commands are available:
+.TP
+.B :help
+Show available commands.
+.TP
+.B :reset
+Clear current session history (variables/functions).
+.TP
+.B :vars
+Show active variables.
+.TP
+.B :funcs
+Show user-defined functions.
+.TP
+.B :structs
+Show user-defined structs.
+.TP
+.B :imports
+Show active imports.
+.TP
+.B :history
+Show session input history.
+.TP
+.BR :type " " \fIexpr\fR
+Show the inferred type of an expression.
+.TP
+.BR :c " " \fIstmt\fR
+Show the generated C code for a statement.
+.TP
+.BR :time " " \fIexpr\fR
+Benchmark an expression (runs 1000 iterations).
+.TP
+.BR :edit " " [\fIn\fR]
+Edit command \fIn\fR (default: last) in $EDITOR.
+.TP
+.BR :save " " \fIfile\fR
+Save the current session to a .zc file.
+.TP
+.BR :load " " \fIfile\fR
+Load and execute a .zc file into the session.
+.TP
+.BR :watch " " \fIexpr\fR
+Watch an expression (re-evaluated after every entry).
+.TP
+.BR :unwatch " " \fIn\fR
+Remove a watch.
+.TP
+.B :undo
+Remove the last command from the session.
+.TP
+.BR :delete " " \fIn\fR
+Remove command at index \fIn\fR.
+.TP
+.B :clear
+Clear the screen.
+.TP
+.B :quit
+Exit the REPL.
+.TP
+.BR ! " " \fIcmd\fR
+Run a shell command (e.g. !ls).
 .SH OPTIONS
 .TP
 .BR \-o " " \fIfile\fR
@@ -38,6 +102,9 @@ Specify output executable name.
 .TP
 .B \-\-emit\-c
 Keep the generated C file (out.c) after compilation.
+.TP
+.B \-\-keep\-comments
+Preserve comments in the generated C output.
 .TP
 .B \-\-freestanding
 Enable freestanding mode (no standard library).
@@ -59,6 +126,21 @@ Suppress non-error output.
 .TP
 .B \-c
 Compile only; produce object file (.o) without linking.
+.TP
+.B \-\-json
+Emit diagnostics as JSON objects for tool integration.
+.TP
+.B \-\-no-zen
+Disable the introductory Zen Facts message.
+.TP
+.B \-\-cpp
+Use C++ mode for compilation.
+.TP
+.B \-\-objective-c
+Use Objective-C mode for compilation.
+.TP
+.B \-\-cuda
+Use CUDA mode (requires nvcc).
 .SH ENVIRONMENT
 .TP
 .B ZC_ROOT

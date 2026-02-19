@@ -20,8 +20,19 @@ f32, f64|float, double|Floating point
 bool|bool|Boolean (true/false)
 char|char|Single character
 string|char*|Null-terminated string
+string|char*|Null-terminated string
 void|void|Empty type
+iN, uN|_BitInt(N)|Arbitrary bit-width (C23)
 .TE
+.SS Opaque Types
+.TP
+.B Opaque Structs
+Restrict field access to the defining module:
+.B "opaque struct User { ... }"
+.TP
+.B Opaque Type Aliases
+Strongly typed aliases that prevent implicit mixing:
+.B "opaque alias Handle = int;"
 .SS Aggregate Types
 .TP
 .B Arrays
@@ -63,6 +74,20 @@ fn process_file() {
     // ...
 } // buffer freed, file closed automatically
 .fi
+.fi
+.SH FUNCTIONS
+.SS Default Arguments
+Functions can define default values for trailing arguments:
+.B "fn inc(val: int, amount: int = 1) ..."
+.SS Lambdas
+Anonymous functions with environment capture:
+.B "let double = x -> x * 2;"
+.SS Raw Function Pointers
+C-compatible function pointers:
+.B "fn get_callback() -> fn*(int) { ... }"
+.SS Variadic Functions
+Support for C-style variadic arguments:
+.B "fn log(fmt: char*, ...) { ... }"
 .SH CONTROL FLOW
 .SS Pattern Matching
 .PP
@@ -93,6 +118,7 @@ Infinite loop (use
 .B break
 to exit)
 .TP
+.TP
 .BI "repeat " "n"
 Execute block n times
 .SS Advanced Control
@@ -119,6 +145,10 @@ Safe navigation:
 .TP
 .B ?
 Try operator: propagate errors
+.TP
+.B |>
+Pipeline operator:
+.B "x |> f(y) -> f(x, y)"
 .SH GENERICS AND TRAITS
 .SS Generic Types
 .PP
@@ -167,14 +197,36 @@ fn main() {
 Execute code at compile time
 .TP
 .BI "embed " \[dq]file\[dq]
-Embed file as byte array
+Embed file as byte array or typed data:
+.B "let s = embed \"data.txt\" as string;"
+.br
+.B "let arr = embed \"data.bin\" as u8[1024];"
+.TP
 .TP
 .BI "import plugin " \[dq]name\[dq]
 Load compiler plugin
 .SS Attributes
 .PP
 Modify compiler behavior:
-.BR @must_use ", " @inline ", " @packed ", " @deprecated
+@must_use, @deprecated("msg"), @inline, @noinline
+.br
+@packed, @align(N), @constructor, @destructor
+.br
+@unused, @weak, @section("name"), @noreturn
+.br
+@pure, @cold, @hot, @export, @global, @device, @host
+.br
+@comptime, @derive(Eq, Copy, Clone, Debug)
+.SS Smart Derives
+.TP
+.B @derive(Eq)
+Generates equality check (by reference for non-Copy types).
+.TP
+.B @derive(Copy)
+Opt-in to implicit duplication (value semantics).
+.TP
+.B @derive(Clone)
+Generate .clone() method for deep copies.
 .SH INLINE ASSEMBLY
 Zen C supports GCC-style inline assembly with simplified syntax:
 .PP

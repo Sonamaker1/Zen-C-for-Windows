@@ -2,51 +2,30 @@
 #ifndef ZC_COMPAT_H
 #define ZC_COMPAT_H
 
-#ifdef __cplusplus
-/* C++ mode */
-#define ZC_AUTO auto                                ///< Auto type inference.
-#define ZC_CAST(T, x) static_cast<T>(x)             ///< Static cast.
-#define ZC_REINTERPRET(T, x) reinterpret_cast<T>(x) ///< Reinterpret cast.
-#define ZC_EXTERN_C extern "C"                      ///< Extern "C" linkage.
-#define ZC_EXTERN_C_BEGIN                                                                          \
-    extern "C"                                                                                     \
-    {
-#define ZC_EXTERN_C_END }
-#else
-/* C mode */
-#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202300L
-#define ZC_AUTO auto ///< C23 standard auto.
-#else
-#define ZC_AUTO __auto_type ///< GCC/Clang extension.
-#endif
-#define ZC_CAST(T, x) ((T)(x))        ///< Explicit cast.
-#define ZC_REINTERPRET(T, x) ((T)(x)) ///< Reinterpret cast.
-#define ZC_EXTERN_C                   ///< Extern "C" (no-op in C).
-#define ZC_EXTERN_C_BEGIN
-#define ZC_EXTERN_C_END
-#endif
+#include "platform/compiler.h"
 
-#ifdef __TINYC__
-/* TCC compatibility */
-#ifndef __auto_type
-#define __auto_type __typeof__
-#endif
+/* File extensions for mixed source compilation */
+#define ZC_EXT_C ".c"
+#define ZC_EXT_CPP ".cpp"
+#define ZC_EXT_M ".m"
+#define ZC_EXT_MM ".mm"
+#define ZC_EXT_O ".o"
+#define ZC_EXT_A ".a"
+#define ZC_EXT_DYLIB ".dylib"
+#define ZC_EXT_SO ".so"
 
-#ifndef __builtin_expect
-#define __builtin_expect(x, v) (x)
-#endif
-
-#ifndef __builtin_unreachable
-#define __builtin_unreachable()
-#endif
-#endif
+#define ZC_IS_BACKEND_EXT(ext)                                                                     \
+    (strcmp(ext, ZC_EXT_C) == 0 || strcmp(ext, ZC_EXT_CPP) == 0 || strcmp(ext, ZC_EXT_M) == 0 ||   \
+     strcmp(ext, ZC_EXT_MM) == 0 || strcmp(ext, ZC_EXT_O) == 0 || strcmp(ext, ZC_EXT_A) == 0 ||    \
+     strcmp(ext, ZC_EXT_DYLIB) == 0 || strcmp(ext, ZC_EXT_SO) == 0)
 
 /* Centralized string definition for codegen emission */
 #define ZC_TCC_COMPAT_STR                                                                          \
     "#ifdef __TINYC__\n"                                                                           \
-    "#ifndef __auto_type\n"                                                                        \
-    "#define __auto_type __typeof__\n"                                                             \
-    "#endif\n"                                                                                     \
+    "#undef ZC_AUTO\n"                                                                             \
+    "#define ZC_AUTO __auto_type\n"                                                                \
+    "#undef ZC_AUTO_INIT\n"                                                                        \
+    "#define ZC_AUTO_INIT(var, init) __typeof__((init)) var = (init)\n"                            \
     "\n"                                                                                           \
     "#ifndef __builtin_expect\n"                                                                   \
     "#define __builtin_expect(x, v) (x)\n"                                                         \
@@ -54,6 +33,12 @@
     "\n"                                                                                           \
     "#ifndef __builtin_unreachable\n"                                                              \
     "#define __builtin_unreachable()\n"                                                            \
+    "#endif\n"                                                                                     \
+    "#else\n"                                                                                      \
+    "#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202300L\n"                               \
+    "#define ZC_AUTO_INIT(var, init) auto var = (init)\n"                                          \
+    "#else\n"                                                                                      \
+    "#define ZC_AUTO_INIT(var, init) __auto_type var = (init)\n"                                   \
     "#endif\n"                                                                                     \
     "#endif\n"
 
@@ -73,7 +58,7 @@
     "unsigned short: \"%u\", int: \"%d\", unsigned int: \"%u\", "                                  \
     "long: \"%ld\", unsigned long: \"%lu\", long long: \"%lld\", "                                 \
     "unsigned long long: \"%llu\", float: \"%f\", double: \"%f\", "                                \
-    "char*: \"%s\", void*: \"%p\" _z_objc_map)\n"
+    "char*: \"%s\", const char*: \"%s\", void*: \"%p\" _z_objc_map)\n"
 
 #define ZC_C_ARG_GENERIC_STR                                                                       \
     "#define _z_arg(x) _Generic((x), _Bool: _z_bool_str(x) _z_objc_arg_map(x), default: (x))\n"

@@ -229,6 +229,13 @@ Token lexer_next(Lexer *l)
             l->pos -= len;
             l->col -= len;
         }
+        // Raw Strings
+        else if (len == 1 && s[0] == 'r' && (s[1] == '"' || s[1] == '\''))
+        {
+            // Reset pos/col because we want to parse string
+            l->pos -= len;
+            l->col -= len;
+        }
         else
         {
             return (Token){TOK_IDENT, s, len, start_line, start_col};
@@ -255,12 +262,43 @@ Token lexer_next(Lexer *l)
         return (Token){TOK_FSTRING, s, len, start_line, start_col};
     }
 
+    // Raw Strings (r"..." or r'...')
+    if (s[0] == 'r' && (s[1] == '"' || s[1] == '\''))
+    {
+        char quote = s[1];
+        int len = 2;
+        // In raw strings, only escape the quote itself
+        while (s[len] && s[len] != quote)
+        {
+            if (s[len] == '\\' && s[len + 1] == quote)
+            {
+                len += 2; // Skip escaped quote
+            }
+            else
+            {
+                len++;
+            }
+        }
+        if (s[len] == quote)
+        {
+            len++;
+        }
+        l->pos += len;
+        l->col += len;
+        return (Token){TOK_RAW_STRING, s, len, start_line, start_col};
+    }
+
     // Numbers
     if (isdigit(*s))
     {
         int len = 0;
+        int is_hex = 0;
+        int is_bin = 0;
+        int is_oct = 0;
+
         if (s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
         {
+            is_hex = 1;
             len = 2;
             while (isxdigit(s[len]))
             {
@@ -269,8 +307,18 @@ Token lexer_next(Lexer *l)
         }
         else if (s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
         {
+            is_bin = 1;
             len = 2;
             while (s[len] == '0' || s[len] == '1')
+            {
+                len++;
+            }
+        }
+        else if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
+        {
+            is_oct = 1;
+            len = 2;
+            while (s[len] >= '0' && s[len] <= '7')
             {
                 len++;
             }
@@ -281,31 +329,53 @@ Token lexer_next(Lexer *l)
             {
                 len++;
             }
+        }
+
+        if (!is_hex && !is_bin && !is_oct)
+        {
+            int is_float = 0;
             if (s[len] == '.')
             {
                 if (s[len + 1] != '.')
                 {
+                    is_float = 1;
                     len++;
                     while (isdigit(s[len]))
                     {
                         len++;
                     }
-                    // Consume float suffix (e.g. 1.0f)
-                    if (is_ident_start(s[len]))
-                    {
-                        while (is_ident_char(s[len]))
-                        {
-                            len++;
-                        }
-                    }
-                    l->pos += len;
-                    l->col += len;
-                    return (Token){TOK_FLOAT, s, len, start_line, start_col};
                 }
+            }
+
+            if (s[len] == 'e' || s[len] == 'E')
+            {
+                is_float = 1;
+                len++;
+                if (s[len] == '+' || s[len] == '-')
+                {
+                    len++;
+                }
+                while (isdigit(s[len]))
+                {
+                    len++;
+                }
+            }
+
+            if (is_float)
+            {
+                if (is_ident_start(s[len]))
+                {
+                    while (is_ident_char(s[len]))
+                    {
+                        len++;
+                    }
+                }
+                l->pos += len;
+                l->col += len;
+                return (Token){TOK_FLOAT, s, len, start_line, start_col};
             }
         }
 
-        // Consume integer suffix (e.g. 1u, 100u64, 1L)
         if (is_ident_start(s[len]))
         {
             while (is_ident_char(s[len]))
@@ -365,7 +435,7 @@ Token lexer_next(Lexer *l)
 
     // Operators.
     int len = 1;
-    TokenType type = TOK_OP;
+    ZenTokenType type = TOK_OP;
 
     if (s[0] == '?' && s[1] == '.')
     {
@@ -441,13 +511,9 @@ Token lexer_next(Lexer *l)
     {
         len = 2;
     }
-    else if (s[1] == '=')
+    else if (s[1] == '=' && strchr("=!<>+-*/%|&^", s[0]))
     {
-        // This catches: == != <= >= += -= *= /= %= |= &= ^=
-        if (strchr("=!<>+-*/%|&^", s[0]))
-        {
-            len = 2;
-        }
+        len = 2;
     }
 
     else

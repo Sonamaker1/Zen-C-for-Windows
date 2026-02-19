@@ -694,6 +694,7 @@ char *replace_string_type(const char *args)
 // Helper to emit auto type or fallback.
 void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t, FILE *out)
 {
+    (void)t;
     char *inferred = NULL;
     if (init_expr)
     {
@@ -706,12 +707,11 @@ void emit_auto_type(ParserContext *ctx, ASTNode *init_expr, Token t, FILE *out)
     }
     else
     {
-        if (strstr(g_config.cc, "tcc"))
+        if (strstr(g_config.cc, "tcc") && init_expr)
         {
-            zpanic_with_suggestion(t,
-                                   "Type inference failed for variable initialization and TCC does "
-                                   "not support __auto_type",
-                                   "Please specify the type explicitly: 'var x: Type = ...'");
+            fprintf(out, "__typeof__((");
+            codegen_expression(ctx, init_expr, out);
+            fprintf(out, "))");
         }
         else
         {
@@ -920,4 +920,26 @@ void codegen_expression_with_move(ParserContext *ctx, ASTNode *node, FILE *out)
         }
     }
     codegen_expression(ctx, node, out);
+}
+
+int is_struct_return_type(const char *ret_type)
+{
+    if (ret_type && strcmp(ret_type, "int") != 0 && strcmp(ret_type, "bool") != 0 &&
+        strcmp(ret_type, "char") != 0 && strcmp(ret_type, "float") != 0 &&
+        strcmp(ret_type, "double") != 0 && strcmp(ret_type, "long") != 0 &&
+        strcmp(ret_type, "usize") != 0 && strcmp(ret_type, "isize") != 0 &&
+        strcmp(ret_type, "byte") != 0 && strcmp(ret_type, "rune") != 0 &&
+        strcmp(ret_type, "size_t") != 0 && strcmp(ret_type, "ptrdiff_t") != 0 &&
+        strcmp(ret_type, "ssize_t") != 0 && strncmp(ret_type, "uint", 4) != 0 &&
+        strncmp(ret_type, "int", 3) != 0 && strncmp(ret_type, "i8", 2) != 0 &&
+        strncmp(ret_type, "u8", 2) != 0 && strncmp(ret_type, "i16", 3) != 0 &&
+        strncmp(ret_type, "u16", 3) != 0 && strncmp(ret_type, "i32", 3) != 0 &&
+        strncmp(ret_type, "u32", 3) != 0 && strncmp(ret_type, "i64", 3) != 0 &&
+        strncmp(ret_type, "u64", 3) != 0 && strncmp(ret_type, "f32", 3) != 0 &&
+        strncmp(ret_type, "f64", 3) != 0 && strncmp(ret_type, "i128", 4) != 0 &&
+        strncmp(ret_type, "u128", 4) != 0)
+    {
+        return 1;
+    }
+    return 0;
 }

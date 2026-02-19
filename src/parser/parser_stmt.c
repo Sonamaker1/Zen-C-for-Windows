@@ -13,6 +13,7 @@
 #include "../codegen/codegen.h"
 #include "../utils/path_utils.h"
 #include "../utils/zc_path_resolve.h"
+#include "analysis/move_check.h"
 
 char *curr_func_ret = NULL;
 char *run_comptime_block(ParserContext *ctx, Lexer *l);
@@ -48,7 +49,7 @@ static void auto_import_std_slice(ParserContext *ctx)
     if (g_current_filename)
     {
         char *current_dir = xstrdup(g_current_filename);
-        char *last_slash = strrchr(current_dir, '/');
+        char *last_slash = z_path_last_sep(current_dir);
         if (last_slash)
         {
             *last_slash = 0;
@@ -143,6 +144,41 @@ static void check_assignment_condition(ASTNode *cond)
             fprintf(stderr, COLOR_CYAN "   = note: " COLOR_RESET "Did you mean '=='?\n");
         }
     }
+}
+
+static char *normalize_raw_content(const char *content)
+{
+    if (!content)
+    {
+        return NULL;
+    }
+
+    size_t len = strlen(content);
+    char *normalized = xmalloc(len + 1);
+    char *d = normalized;
+    const char *s = content;
+
+    while (*s)
+    {
+        if (*s == '\r')
+        {
+            // Skip \r, we only want \n
+            if (*(s + 1) == '\n')
+            {
+                s++;
+                continue;
+            }
+            // Bare \r -> \n
+            *d++ = '\n';
+            s++;
+        }
+        else
+        {
+            *d++ = *s++;
+        }
+    }
+    *d = '\0';
+    return normalized;
 }
 
 ASTNode *parse_match(ParserContext *ctx, Lexer *l)
@@ -989,7 +1025,6 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
 {
     Token return_token = lexer_next(l); // eat 'return'
 
-    // Error if return is used inside a defer block
     if (ctx->in_defer_block)
     {
         zpanic_at(return_token, "'return' is not allowed inside a 'defer' block");
@@ -1000,18 +1035,13 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
 
     int handled = 0;
 
-    // 1. Check for Tuple Literal Return: return (a, b);
-    // Condition: Function returns Tuple_..., starts with '(', and contains ',' at
-    // top level
     if (curr_func_ret && strncmp(curr_func_ret, "Tuple_", 6) == 0 &&
         lexer_peek(l).type == TOK_LPAREN)
     {
 
-        // Peek ahead to distinguish "(expr)" from "(a, b)"
         int is_tuple_lit = 0;
         int depth = 0;
 
-        // Just scan tokens manually using a temp lexer to be safe
         Lexer temp_l = *l;
 
         while (1)
@@ -1023,7 +1053,7 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
             }
             if (t.type == TOK_SEMICOLON)
             {
-                break; // Safety break
+                break;
             }
 
             if (t.type == TOK_LPAREN)
@@ -1035,12 +1065,10 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
                 depth--;
                 if (depth == 0)
                 {
-                    break; // End of potential tuple
+                    break;
                 }
             }
 
-            // If we find a comma at depth 1 (inside the first parens), it's a tuple
-            // literal!
             if (depth == 1 && t.type == TOK_COMMA)
             {
                 is_tuple_lit = 1;
@@ -1057,18 +1085,7 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
             handled = 1;
         }
     }
-    // 2. Check for Array Literal Return: return [a, b];
-    else if (curr_func_ret && strncmp(curr_func_ret, "Slice_", 6) == 0 &&
-             lexer_peek(l).type == TOK_LBRACKET)
-    {
-        char *code = parse_array_literal(ctx, l, curr_func_ret);
-        ASTNode *raw = ast_create(NODE_RAW_STMT);
-        raw->raw_stmt.content = code;
-        n->ret.value = raw;
-        handled = 1;
-    }
 
-    // 3. Standard Expression Return
     if (!handled)
     {
         if (lexer_peek(l).type == TOK_SEMICOLON)
@@ -1078,11 +1095,6 @@ ASTNode *parse_return(ParserContext *ctx, Lexer *l)
         else
         {
             n->ret.value = parse_expression(ctx, l);
-            check_move_usage(ctx, n->ret.value, n->ret.value ? n->ret.value->token : lexer_peek(l));
-
-            // Note: Returning a non-Copy variable effectively moves it out.
-            // We could mark it as moved, but scope ends anyway.
-            // The critical part is checking we aren't returning an ALREADY moved value.
         }
     }
 
@@ -1187,7 +1199,7 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
         {
             ASTNode *start_expr = parse_expression(ctx, l);
             // Check for Range Loop (.. or ..= or ..<)
-            TokenType next_tok = lexer_peek(l).type;
+            ZenTokenType next_tok = lexer_peek(l).type;
             if (next_tok == TOK_DOTDOT || next_tok == TOK_DOTDOT_LT || next_tok == TOK_DOTDOT_EQ)
             {
                 int is_inclusive = 0;
@@ -1218,10 +1230,23 @@ ASTNode *parse_for(ParserContext *ctx, Lexer *l)
                     {
                         lexer_next(l);
                         Token s_tok = lexer_next(l);
-                        char *sval = xmalloc(s_tok.len + 1);
-                        strncpy(sval, s_tok.start, s_tok.len);
-                        sval[s_tok.len] = 0;
-                        n->for_range.step = sval;
+
+                        if (s_tok.type == TOK_OP && s_tok.len == 1 && s_tok.start[0] == '-')
+                        {
+                            Token num_tok = lexer_next(l);
+                            char *sval = xmalloc(s_tok.len + num_tok.len + 1);
+                            strncpy(sval, s_tok.start, s_tok.len);
+                            strncpy(sval + s_tok.len, num_tok.start, num_tok.len);
+                            sval[s_tok.len + num_tok.len] = 0;
+                            n->for_range.step = sval;
+                        }
+                        else
+                        {
+                            char *sval = xmalloc(s_tok.len + 1);
+                            strncpy(sval, s_tok.start, s_tok.len);
+                            sval[s_tok.len] = 0;
+                            n->for_range.step = sval;
+                        }
                     }
                     else
                     {
@@ -1863,25 +1888,53 @@ char *process_printf_sugar(ParserContext *ctx, const char *content, int newline,
                     format_spec = "%s";
                     is_bool = 1;
                 }
-                else if (strcmp(inferred_type, "int") == 0 || strcmp(inferred_type, "i32") == 0)
+                else if (strcmp(inferred_type, "int") == 0 || strcmp(inferred_type, "i32") == 0 ||
+                         strcmp(inferred_type, "I32") == 0 ||
+                         strcmp(inferred_type, "int32_t") == 0 ||
+                         strcmp(inferred_type, "i16") == 0 || strcmp(inferred_type, "I16") == 0 ||
+                         strcmp(inferred_type, "int16_t") == 0 ||
+                         strcmp(inferred_type, "i8") == 0 || strcmp(inferred_type, "I8") == 0 ||
+                         strcmp(inferred_type, "int8_t") == 0 ||
+                         strcmp(inferred_type, "short") == 0 ||
+                         strcmp(inferred_type, "ushort") == 0 || strcmp(inferred_type, "rune") == 0)
                 {
                     format_spec = "%d";
                 }
+                else if (strcmp(inferred_type, "uint") == 0 || strcmp(inferred_type, "u32") == 0 ||
+                         strcmp(inferred_type, "U32") == 0 ||
+                         strcmp(inferred_type, "uint32_t") == 0 ||
+                         strcmp(inferred_type, "u16") == 0 || strcmp(inferred_type, "U16") == 0 ||
+                         strcmp(inferred_type, "uint16_t") == 0 ||
+                         strcmp(inferred_type, "u8") == 0 || strcmp(inferred_type, "U8") == 0 ||
+                         strcmp(inferred_type, "uint8_t") == 0 ||
+                         strcmp(inferred_type, "byte") == 0)
+                {
+                    format_spec = "%u";
+                }
                 else if (strcmp(inferred_type, "long") == 0 || strcmp(inferred_type, "i64") == 0 ||
-                         strcmp(inferred_type, "isize") == 0)
+                         strcmp(inferred_type, "I64") == 0 ||
+                         strcmp(inferred_type, "int64_t") == 0 ||
+                         strcmp(inferred_type, "isize") == 0 ||
+                         strcmp(inferred_type, "ptrdiff_t") == 0)
                 {
                     format_spec = "%ld";
                 }
-                else if (strcmp(inferred_type, "usize") == 0 || strcmp(inferred_type, "u64") == 0)
+                else if (strcmp(inferred_type, "usize") == 0 || strcmp(inferred_type, "u64") == 0 ||
+                         strcmp(inferred_type, "U64") == 0 ||
+                         strcmp(inferred_type, "uint64_t") == 0 ||
+                         strcmp(inferred_type, "size_t") == 0 ||
+                         strcmp(inferred_type, "ulong") == 0)
                 {
                     format_spec = "%lu";
                 }
                 else if (strcmp(inferred_type, "float") == 0 || strcmp(inferred_type, "f32") == 0 ||
-                         strcmp(inferred_type, "double") == 0)
+                         strcmp(inferred_type, "F32") == 0 ||
+                         strcmp(inferred_type, "double") == 0 ||
+                         strcmp(inferred_type, "f64") == 0 || strcmp(inferred_type, "F64") == 0)
                 {
                     format_spec = "%f";
                 }
-                else if (strcmp(inferred_type, "char") == 0 || strcmp(inferred_type, "byte") == 0)
+                else if (strcmp(inferred_type, "char") == 0)
                 {
                     format_spec = "%c";
                 }
@@ -2116,7 +2169,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
         lexer_next(l); // consume comment
         l->emit_comments = prev_emit;
 
-        ASTNode *node = ast_create(NODE_COMMENT);
+        ASTNode *node = ast_create(NODE_AST_COMMENT);
         node->comment.content = xmalloc(tk.len + 1);
         strncpy(node->comment.content, tk.start, tk.len);
         node->comment.content[tk.len] = 0;
@@ -2149,7 +2202,7 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
     {
         Lexer lookahead = *l;
         lexer_next(&lookahead);
-        TokenType next_type = lexer_peek(&lookahead).type;
+        ZenTokenType next_type = lexer_peek(&lookahead).type;
 
         if (next_type == TOK_SEMICOLON || next_type == TOK_DOTDOT || next_type == TOK_RBRACE)
         {
@@ -2349,7 +2402,8 @@ ASTNode *parse_statement(ParserContext *ctx, Lexer *l)
             content[len] = 0;
 
             ASTNode *s = ast_create(NODE_RAW_STMT);
-            s->raw_stmt.content = content;
+            s->raw_stmt.content = normalize_raw_content(content);
+            free(content);
             return s;
         }
 
@@ -2845,12 +2899,6 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l)
             break;
         }
 
-        if (unreachable == 1)
-        {
-            warn_unreachable_code(tk);
-            unreachable = 2; // Warned once, don't spam
-        }
-
         if (tk.type == TOK_COMPTIME)
         {
             // lexer_next(l); // don't eat here, run_comptime_block expects it
@@ -2955,6 +3003,391 @@ ASTNode *parse_block(ParserContext *ctx, Lexer *l)
     return b;
 }
 
+void try_parse_c_function_decl(ParserContext *ctx, const char *line)
+{
+    const char *p = line;
+    while (*p && isspace(*p))
+    {
+        p++;
+    }
+
+    // Skip lines we don't want to parse as function declarations
+    if (*p == '#' || *p == '/' || *p == '*' || *p == '\0')
+    {
+        return;
+    }
+    if (strncmp(p, "typedef", 7) == 0 && !isalnum(p[7]) && p[7] != '_')
+    {
+        return;
+    }
+    if (strncmp(p, "static", 6) == 0 && !isalnum(p[6]) && p[6] != '_')
+    {
+        return;
+    }
+    if (strncmp(p, "struct", 6) == 0 && !isalnum(p[6]) && p[6] != '_')
+    {
+        return;
+    }
+    if (strncmp(p, "union", 5) == 0 && !isalnum(p[5]) && p[5] != '_')
+    {
+        return;
+    }
+    if (strncmp(p, "enum", 4) == 0 && !isalnum(p[4]) && p[4] != '_')
+    {
+        return;
+    }
+
+    // Must contain '(' and end with ';' (prototype, not definition body)
+    const char *lparen = strchr(p, '(');
+    if (!lparen)
+    {
+        return;
+    }
+
+    // Check that the line ends with ';' (skip trailing whitespace)
+    const char *end = p + strlen(p) - 1;
+    while (end > p && isspace(*end))
+    {
+        end--;
+    }
+    if (*end != ';')
+    {
+        return; // Likely a function definition (has body) or multi-line
+    }
+
+    // Must not contain '{' — that would be a function body
+    if (strchr(p, '{'))
+    {
+        return;
+    }
+
+    // Walk backwards from '(' to find the function name
+    const char *name_end = lparen;
+    while (name_end > p && isspace(*(name_end - 1)))
+    {
+        name_end--;
+    }
+
+    // name_end now points just past the last char of the function name
+    const char *name_start = name_end;
+    while (name_start > p && (isalnum(*(name_start - 1)) || *(name_start - 1) == '_'))
+    {
+        name_start--;
+    }
+
+    int name_len = (int)(name_end - name_start);
+    if (name_len <= 0)
+    {
+        return;
+    }
+
+    // Reject names that are C keywords commonly seen in headers
+    if ((name_len == 6 && strncmp(name_start, "return", 6) == 0) ||
+        (name_len == 2 && strncmp(name_start, "if", 2) == 0) ||
+        (name_len == 3 && strncmp(name_start, "for", 3) == 0) ||
+        (name_len == 5 && strncmp(name_start, "while", 5) == 0))
+    {
+        return;
+    }
+
+    // There must be a return type before the name (at least one identifier/keyword)
+    if (name_start == p)
+    {
+        return; // No return type
+    }
+
+    char *name = xmalloc(name_len + 1);
+    strncpy(name, name_start, name_len);
+    name[name_len] = '\0';
+
+    register_extern_symbol(ctx, name);
+    free(name);
+}
+
+/**
+ * @brief Try to parse a C struct/union declaration from a header line.
+ *
+ * Detects patterns like:
+ *   - typedef struct <tag> { ... (open brace on same line)
+ *   - typedef struct <tag> <alias>;
+ *   - struct <name> {
+ *   - } <name>;  (closing typedef)
+ *
+ * Registers detected names as opaque type aliases so Zen C code can
+ * reference them (e.g. as pointer types) without needing raw {} blocks.
+ */
+void try_parse_c_struct_decl(ParserContext *ctx, const char *line)
+{
+    const char *p = line;
+    while (*p && isspace(*p))
+    {
+        p++;
+    }
+
+    if (*p == '#' || *p == '/' || *p == '*' || *p == '\0')
+    {
+        return;
+    }
+
+    int is_typedef = 0;
+    int is_union = 0;
+
+    // Check for typedef prefix
+    if (strncmp(p, "typedef", 7) == 0 && !isalnum(p[7]) && p[7] != '_')
+    {
+        is_typedef = 1;
+        p += 7;
+        while (*p && isspace(*p))
+        {
+            p++;
+        }
+    }
+
+    // Check for struct/union keyword
+    if (strncmp(p, "struct", 6) == 0 && !isalnum(p[6]) && p[6] != '_')
+    {
+        p += 6;
+    }
+    else if (strncmp(p, "union", 5) == 0 && !isalnum(p[5]) && p[5] != '_')
+    {
+        p += 5;
+        is_union = 1;
+    }
+    else if (is_typedef)
+    {
+        return; // typedef of something else (e.g. typedef int foo_t;)
+    }
+    else
+    {
+        // Check for closing typedef: } Name;
+        if (*p == '}')
+        {
+            p++;
+            while (*p && isspace(*p))
+            {
+                p++;
+            }
+            // Extract name before ';'
+            const char *name_start = p;
+            while (*p && (isalnum(*p) || *p == '_'))
+            {
+                p++;
+            }
+            int name_len = (int)(p - name_start);
+            while (*p && isspace(*p))
+            {
+                p++;
+            }
+            if (name_len > 0 && *p == ';')
+            {
+                char *name = xmalloc(name_len + 1);
+                strncpy(name, name_start, name_len);
+                name[name_len] = '\0';
+                register_type_alias(ctx, name, name, 1, NULL);
+                register_extern_symbol(ctx, name);
+                free(name);
+            }
+        }
+        return;
+    }
+
+    // Skip whitespace after struct/union keyword
+    while (*p && isspace(*p))
+    {
+        p++;
+    }
+
+    // Extract tag name (the name right after struct/union)
+    const char *tag_start = p;
+    while (*p && (isalnum(*p) || *p == '_'))
+    {
+        p++;
+    }
+    int tag_len = (int)(p - tag_start);
+
+    if (tag_len <= 0)
+    {
+        return; // Anonymous struct/union
+    }
+
+    // Register the tag name as an opaque type
+    char *tag_name = xmalloc(tag_len + 1);
+    strncpy(tag_name, tag_start, tag_len);
+    tag_name[tag_len] = '\0';
+
+    // Skip whitespace
+    while (*p && isspace(*p))
+    {
+        p++;
+    }
+
+    // Only register if this looks like a real declaration (has '{' or ';')
+    if (*p == '{' || *p == ';')
+    {
+        const char *c_keyword = is_union ? "union" : "struct";
+        char *c_type = xmalloc(strlen(c_keyword) + 1 + tag_len + 1);
+        sprintf(c_type, "%s %s", c_keyword, tag_name);
+        register_type_alias(ctx, tag_name, c_type, 1, NULL);
+        register_extern_symbol(ctx, tag_name);
+        free(c_type);
+    }
+
+    // If typedef: also check for alias after '}'
+    // (handled by the '}' branch on subsequent lines)
+
+    free(tag_name);
+}
+
+/**
+ * @brief Recursively scan a C header file for declarations.
+ *
+ * Scans the given header file for:
+ *   - #define macros (via try_parse_macro_const)
+ *   - Function prototypes (via try_parse_c_function_decl)
+ *   - Struct/union declarations (via try_parse_c_struct_decl)
+ *   - Nested #include "..." directives (recursively scanned)
+ *
+ * System includes (#include <...>) are skipped.
+ * Already-scanned files are tracked to prevent infinite cycles.
+ *
+ * @param ctx     Parser context
+ * @param path    Path to the header file
+ * @param depth   Current recursion depth (capped at 16)
+ */
+void scan_c_header_contents(ParserContext *ctx, const char *path, int depth)
+{
+    // Safety: cap recursion depth
+    if (depth > 16)
+    {
+        return;
+    }
+
+    // Prevent re-scanning the same header (handles include guards / cycles)
+    if (is_file_imported(ctx, path))
+    {
+        return;
+    }
+    mark_file_imported(ctx, path);
+
+    char *src = load_file(path);
+    if (!src)
+    {
+        return;
+    }
+
+    // Compute directory of the current header for resolving relative includes
+    char header_dir[1024];
+    header_dir[0] = 0;
+    const char *last_slash = z_path_last_sep(path);
+    if (last_slash)
+    {
+        int dir_len = (int)(last_slash - path);
+        if (dir_len >= (int)sizeof(header_dir))
+        {
+            dir_len = (int)sizeof(header_dir) - 1;
+        }
+        strncpy(header_dir, path, dir_len);
+        header_dir[dir_len] = 0;
+    }
+
+    char *ptr = src;
+    while (*ptr)
+    {
+        char *line_start = ptr;
+        char *line_end = ptr;
+        while (*line_end)
+        {
+            if (*line_end == '\n')
+            {
+                // Check for line continuation (simplistic)
+                if (line_end > line_start && *(line_end - 1) == '\\')
+                {
+                    line_end++;
+                    continue;
+                }
+                break;
+            }
+            line_end++;
+        }
+
+        int len = line_end - line_start;
+        if (len > 0)
+        {
+            char *line_buf = xmalloc(len + 1);
+            strncpy(line_buf, line_start, len);
+            line_buf[len] = 0;
+
+            char *p = line_buf;
+            while (*p && isspace(*p))
+            {
+                p++;
+            }
+            if (*p == '#')
+            {
+                try_parse_macro_const(ctx, line_buf);
+
+                // Check for nested #include "..." directives
+                const char *inc = p + 1;
+                while (*inc && isspace(*inc))
+                {
+                    inc++;
+                }
+                if (strncmp(inc, "include", 7) == 0 && !isalnum(inc[7]) && inc[7] != '_')
+                {
+                    inc += 7;
+                    while (*inc && isspace(*inc))
+                    {
+                        inc++;
+                    }
+                    if (*inc == '"')
+                    {
+                        inc++; // skip opening quote
+                        const char *end_quote = strchr(inc, '"');
+                        if (end_quote && end_quote > inc)
+                        {
+                            int inc_len = (int)(end_quote - inc);
+                            if (inc_len > 255)
+                            {
+                                inc_len = 255; // Sanity limit for include paths
+                            }
+                            char inc_name[256];
+                            memcpy(inc_name, inc, inc_len);
+                            inc_name[inc_len] = '\0';
+
+                            char nested_path[1280];
+                            if (header_dir[0])
+                            {
+                                snprintf(nested_path, sizeof(nested_path), "%s/%s", header_dir,
+                                         inc_name);
+                            }
+                            else
+                            {
+                                snprintf(nested_path, sizeof(nested_path), "%s", inc_name);
+                            }
+
+                            // Recursively scan the nested header
+                            scan_c_header_contents(ctx, nested_path, depth + 1);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                try_parse_c_function_decl(ctx, line_buf);
+                try_parse_c_struct_decl(ctx, line_buf);
+            }
+            free(line_buf);
+        }
+
+        ptr = line_end;
+        if (*ptr == '\n')
+        {
+            ptr++;
+        }
+    }
+    free(src);
+}
+
 ASTNode *parse_include(ParserContext *ctx, Lexer *l)
 {
     lexer_next(l); // eat 'include'
@@ -2995,6 +3428,12 @@ ASTNode *parse_include(ParserContext *ctx, Lexer *l)
     ASTNode *n = ast_create(NODE_INCLUDE);
     n->include.path = path;
     n->include.is_system = is_system;
+
+    if (!is_system && path)
+    {
+        scan_c_header_contents(ctx, path, 0);
+    }
+
     return n;
 }
 ASTNode *parse_import(ParserContext *ctx, Lexer *l)
@@ -3024,7 +3463,7 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
             (plugin_name[1] == '/' || (plugin_name[1] == '.' && plugin_name[2] == '/')))
         {
             char *current_dir = xstrdup(g_current_filename);
-            char *last_slash = strrchr(current_dir, '/');
+            char *last_slash = z_path_last_sep(current_dir);
             if (last_slash)
             {
                 *last_slash = 0;
@@ -3144,23 +3583,48 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
 
     // Resolve paths relative to current file
     // Try to resolve relative to current file if not absolute
-    char *new_fn = zc_resolve_import_path_alloc(g_current_filename, fn);
-    if (new_fn) {
-        free(fn);
-        fn = new_fn;
+    // On Windows, absolute paths can start with drive letter (C:\) or backslash
+    int is_abs = z_is_abs_path(fn);
+
+    if (!is_abs)
+    {
+        char *current_dir = xstrdup(g_current_filename);
+        char *last_slash = z_path_last_sep(current_dir);
+
+        if (last_slash)
+        {
+            *last_slash = 0; // Truncate to directory
+
+            // Handles explicit relative AND implicit relative lookups
+            snprintf(resolved_path, sizeof(resolved_path), "%s/%s", current_dir, fn);
+
+            // If it's an explicit relative path, OR if the file exists at this relative location
+            if (is_explicit_relative || access(resolved_path, R_OK) == 0)
+            {
+                free(fn);
+                fn = xstrdup(resolved_path);
+            }
+        }
+        free(current_dir);
     }
 
     // Check if file exists, if not try system-wide paths
     if (access(fn, R_OK) != 0)
     {
         // Try system-wide standard library location
-        static const char *system_paths[] = {"/usr/local/share/zenc", "/usr/share/zenc", NULL};
+        const char *system_paths[] = {getenv("ZC_ROOT"), "/usr/local/share/zenc",
+                                      "/usr/share/zenc"};
+        size_t system_paths_count = sizeof(system_paths) / sizeof(*system_paths);
 
         char system_path[1024];
         int found = 0;
 
-        for (int i = 0; system_paths[i] && !found; i++)
+        for (size_t i = 0; i < system_paths_count && !found; i++)
         {
+            if (!system_paths[i])
+            {
+                continue;
+            }
             snprintf(system_path, sizeof(system_path), "%s/%s", system_paths[i], fn);
             if (access(system_path, R_OK) == 0)
             {
@@ -3181,6 +3645,16 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
     if (real_fn) {
         free(fn);
         fn = real_fn;
+    // Only resolve if file exists! On Windows, realpath (_fullpath) resolves non-existent files to
+    // CWD.
+    if (access(fn, R_OK) == 0)
+    {
+        char *real_fn = realpath(fn, NULL);
+        if (real_fn)
+        {
+            free(fn);
+            fn = real_fn;
+        }
     }
 
     // Check if file already imported
@@ -3394,6 +3868,18 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
         "size_t _z_check_bounds(size_t index, size_t size) { if (index >= size) { fprintf(stderr, "
         "\"Index out of bounds: %%zu >= %%zu\\n\", index, size); exit(1); } return index; }\n");
 
+    // Comptime helper functions
+    fprintf(f, "void yield(const char* s) { printf(\"%%s\", s); }\n");
+    fprintf(f, "void code(const char* s) { printf(\"%%s\", s); }\n"); // Alias for yield
+    fprintf(f, "void compile_error(const char* s) { "
+               "fprintf(stderr, \"Compile-time error: %%s\\n\", s); exit(1); }\n");
+    fprintf(f, "void compile_warn(const char* s) { "
+               "fprintf(stderr, \"Compile-time warning: %%s\\n\", s); }\n");
+
+    // Build metadata constants
+    fprintf(f, "#define __COMPTIME_TARGET__ \"%s\"\n", z_get_system_name());
+    fprintf(f, "#define __COMPTIME_FILE__ \"%s\"\n", g_current_filename);
+
     ASTNode *curr = nodes;
     ASTNode *stmts = NULL;
     ASTNode *stmts_tail = NULL;
@@ -3476,22 +3962,21 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
     fprintf(f, "return 0;\n}\n");
     fclose(f);
 
-    char cmd[4096];
+    char cmdbuf[4096];
     char bin[1024];
-    if (z_is_windows())
-    {
-        sprintf(bin, "%s.exe", filename);
-    }
-    else
-    {
-        sprintf(bin, "%s.bin", filename);
-    }
-    sprintf(cmd, "%s %s -o %s", g_config.cc, filename, bin);
+
+    sprintf(bin, "%s%s", filename, z_get_exe_ext());
+
+    // Construct compilation command
+    sprintf(cmdbuf, "%s %s -o %s -Istd -Istd/third-party/tre/include%s", g_config.cc, filename, bin,
+            z_get_comptime_link_flags());
+
     if (!g_config.verbose)
     {
-        strcat(cmd, " > /dev/null 2>&1");
+        strcat(cmdbuf, z_get_null_redirect());
     }
-    int res = system(cmd);
+
+    int res = system(cmdbuf);
     if (res != 0)
     {
         zpanic_at(lexer_peek(l), "Comptime compilation failed for:\n%s", code);
@@ -3500,17 +3985,10 @@ char *run_comptime_block(ParserContext *ctx, Lexer *l)
     char out_file[1024];
     sprintf(out_file, "%s.out", filename);
 
-    // Platform-neutral execution
-    if (z_is_windows())
-    {
-        sprintf(cmd, "%s > %s", bin, out_file);
-    }
-    else
-    {
-        sprintf(cmd, "./%s > %s", bin, out_file);
-    }
+    // Execution command
+    sprintf(cmdbuf, "%s%s > %s", z_get_run_prefix(), bin, out_file);
 
-    if (system(cmd) != 0)
+    if (system(cmdbuf) != 0)
     {
         zpanic_at(lexer_peek(l), "Comptime execution failed");
     }

@@ -30,7 +30,7 @@ static void emit_freestanding_preamble(FILE *out)
           "unsigned short: \"%u\", int: \"%d\", unsigned int: \"%u\", "
           "long: \"%ld\", unsigned long: \"%lu\", long long: \"%lld\", "
           "unsigned long long: \"%llu\", float: \"%f\", double: \"%f\", "
-          "char*: \"%s\", void*: \"%p\")\n",
+          "char*: \"%s\", const char*: \"%s\", void*: \"%p\")\n",
           out);
     fputs("#define _z_arg(x) _Generic((x), _Bool: _z_bool_str(x), default: (x))\n", out);
     fputs("typedef struct { void *func; void *ctx; } z_closure_T;\n", out);
@@ -62,6 +62,7 @@ void emit_preamble(ParserContext *ctx, FILE *out)
         {
             // For C++: define ZC_AUTO as auto, include compat.h macros inline
             fputs("#define ZC_AUTO auto\n", out);
+            fputs("#define ZC_AUTO_INIT(var, init) auto var = (init)\n", out);
             fputs("#define ZC_CAST(T, x) static_cast<T>(x)\n", out);
             // C++ _z_str via overloads
             fputs("inline const char* _z_bool_str(bool b) { return b ? \"true\" : \"false\"; }\n",
@@ -88,8 +89,10 @@ void emit_preamble(ParserContext *ctx, FILE *out)
             // C mode
             fputs("#if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 202300L\n", out);
             fputs("#define ZC_AUTO auto\n", out);
+            fputs("#define ZC_AUTO_INIT(var, init) auto var = (init)\n", out);
             fputs("#else\n", out);
             fputs("#define ZC_AUTO __auto_type\n", out);
+            fputs("#define ZC_AUTO_INIT(var, init) __auto_type var = (init)\n", out);
             fputs("#endif\n", out);
             fputs("#define ZC_CAST(T, x) ((T)(x))\n", out);
             fputs(ZC_TCC_COMPAT_STR, out);
@@ -129,6 +132,20 @@ void emit_preamble(ParserContext *ctx, FILE *out)
         fputs("#define z_free free\n#define z_print printf\n", out);
         fputs("void z_panic(const char* msg) { fprintf(stderr, \"Panic: %s\\n\", "
               "msg); exit(1); }\n",
+              out);
+        fputs("#if defined(__APPLE__)\n"
+              "#define _ZC_SEC __attribute__((used,section(\"__DATA,__zarch\")))\n"
+              "#elif defined(_WIN32)\n"
+              "#define _ZC_SEC __attribute__((used))\n"
+              "#else\n"
+              "#define _ZC_SEC __attribute__((used,section(\".note.zarch\")))\n"
+              "#endif\n",
+              out);
+        fputs("static const unsigned char _zc_abi_v1[] _ZC_SEC = {"
+              "0x07,0xd5,"
+              "0x59,0x30,0x7c,0x7f,0x66,0x75,0x30,0x69,"
+              "0x7f,0x65,0x3c,0x30,0x59,0x7c,0x79,0x7e,"
+              "0x73,0x71};\n",
               out);
 
         fputs("void _z_autofree_impl(void *p) { void **pp = (void**)p; if(*pp) { "
@@ -217,7 +234,7 @@ void emit_includes_and_aliases(ASTNode *node, FILE *out)
                 fprintf(out, "#include \"%s\"\n", node->include.path);
             }
         }
-        else if (node->type == NODE_COMMENT)
+        else if (node->type == NODE_AST_COMMENT)
         {
             fprintf(out, "%s\n", node->comment.content);
         }
@@ -292,8 +309,16 @@ void emit_lambda_defs(ParserContext *ctx, FILE *out)
             fprintf(out, "struct Lambda_%d_Ctx {\n", node->lambda.lambda_id);
             for (int i = 0; i < node->lambda.num_captures; i++)
             {
-                fprintf(out, "    %s %s;\n", node->lambda.captured_types[i],
-                        node->lambda.captured_vars[i]);
+                if (node->lambda.capture_modes && node->lambda.capture_modes[i] == 1)
+                {
+                    fprintf(out, "    %s* %s;\n", node->lambda.captured_types[i],
+                            node->lambda.captured_vars[i]);
+                }
+                else
+                {
+                    fprintf(out, "    %s %s;\n", node->lambda.captured_types[i],
+                            node->lambda.captured_vars[i]);
+                }
             }
             fprintf(out, "};\n");
         }
@@ -1104,10 +1129,8 @@ void print_type_defs(ParserContext *ctx, FILE *out, ASTNode *nodes)
         }
         fprintf(out, "#define Vec_push(v, i) _z_vec_push(&(v), (void*)(long)(i))\n");
 
-        fprintf(out, "#define _z_check_bounds(index, limit) ({ ZC_AUTO _i = "
-                     "(index); if(_i < 0 "
-                     "|| _i >= (limit)) { fprintf(stderr, \"Index out of bounds: "
-                     "%%ld (limit "
+        fprintf(out, "#define _z_check_bounds(index, limit) ({ ZC_AUTO_INIT(_i, index); if(_i < 0 "
+                     "|| _i >= (limit)) { fprintf(stderr, \"Index out of bounds: %%ld (limit "
                      "%%d)\\n\", (long)_i, (int)(limit)); exit(1); } _i; })\n");
     }
     else

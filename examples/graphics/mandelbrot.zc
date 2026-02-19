@@ -11,22 +11,22 @@ impl Complex {
     }
 
     fn add(self, b: Complex) -> Complex {
-        return Complex { re: self.re + b.re, im: self.im + b.im };
+        return Complex { re: .re + b.re, im: .im + b.im };
     }
 
     fn mul(self, b: Complex) -> Complex {
         return Complex {
-            re: self.re * b.re - self.im * b.im,
-            im: self.re * b.im + self.im * b.re
+            re: .re * b.re - .im * b.im,
+            im: .re * b.im + .im * b.re
         };
     }
 
     fn abs2(self) -> float {
-        return self.re * self.re + self.im * self.im;
+        return .re * .re + .im * .im;
     }
 
     fn print(self) {
-        println "{self.re}{self.im}i";
+        println "{.re}{.im}i";
     }
 }
 

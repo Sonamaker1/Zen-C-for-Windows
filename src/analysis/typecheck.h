@@ -4,6 +4,8 @@
 #include "ast.h"
 #include "parser.h"
 
+struct MoveState; // Forward declaration
+
 // Type Checker Context
 // Holds the state during the semantic analysis pass.
 // Unlike the parser, this focuses on semantic validity (types, definitions).
@@ -20,6 +22,12 @@ typedef struct TypeChecker
     ASTNode *current_func; ///< Current function being checked (for return type checks).
     int error_count;       ///< Number of type errors found.
     int warning_count;     // Number of recommendations/warnings.
+
+    // Flow Analysis State
+    struct MoveState *move_state; ///< Current state of moved variables.
+
+    // Configuration
+    int move_checks_only; ///< If true, only report move semantics violations (no type errors).
 } TypeChecker;
 
 /**
@@ -32,5 +40,17 @@ typedef struct TypeChecker
  * @return 0 on success (no errors), non-zero if errors occurred.
  */
 int check_program(ParserContext *ctx, ASTNode *root);
+
+/**
+ * @brief Move-Only Checking Entry Point.
+ *
+ * Performs only move semantics analysis (use-after-move detection)
+ * without reporting type errors. Always runs, even without --typecheck.
+ *
+ * @param ctx Global parser context.
+ * @param root Root AST node of the program.
+ * @return 0 on success (no move errors), non-zero if move errors occurred.
+ */
+int check_moves_only(ParserContext *ctx, ASTNode *root);
 
 #endif // TYPECHECK_H

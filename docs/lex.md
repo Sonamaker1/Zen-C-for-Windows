@@ -45,23 +45,27 @@ IdentifierPart  ::= [a-zA-Z0-9_]
 Integers can be decimal, hexadecimal, or binary.
 
 ```text
-IntegerLiteral ::= ( DecimalInt | HexInt | BinaryInt ) IntegerSuffix?
+IntegerLiteral ::= ( DecimalInt | HexInt | OctalInt | BinaryInt ) IntegerSuffix?
 
 DecimalInt ::= [0-9]+
 HexInt     ::= "0x" [0-9a-fA-F]+
+OctalInt   ::= "0o" [0-7]+
 BinaryInt  ::= "0b" [01]+
 
 IntegerSuffix ::= "u" | "L" | "u64" | ... 
 ```
 *Note: The lexer technically consumes any alphanumeric sequence following a number as a suffix.*
+*Note: Negative numbers are lexed as a unary operator (`-`) followed by an integer literal.*
 
 ### Floating Point Literals
 
 ```text
-FloatLiteral ::= [0-9]+ "." [0-9]* FloatSuffix?
+FloatLiteral ::= [0-9]+ "." [0-9]* ExponentPart? FloatSuffix?
+               | [0-9]+ ExponentPart FloatSuffix?
                | [0-9]+ FloatSuffix
 
-FloatSuffix ::= "f"
+ExponentPart ::= ("e" | "E") ("+" | "-")? [0-9]+
+FloatSuffix  ::= "f"
 ```
 
 ### String Literals
@@ -107,7 +111,7 @@ CReserved   ::= "auto" | "case" | "char" | "default" | "do" | "double"
               | "extern" | "float" | "inline" | "int" | "long" | "register" 
               | "restrict" | "short" | "signed" | "switch" | "typedef" 
               | "unsigned" | "void" | "_Atomic" | "_Bool" | "_Complex" 
-              | "_Generic" | "_Imaginary" | "_lmaginary" | "_Noreturn" 
+              | "_Generic" | "_Imaginary" | "_Noreturn" 
               | "_Static_assert" | "_Thread_local"
 
 LogicOp     ::= "and" | "or"

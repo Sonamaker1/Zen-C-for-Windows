@@ -45,7 +45,7 @@ ASTNode *ast_create(NodeType type)
 
 void ast_free(ASTNode *node)
 {
-    if (node->type == NODE_COMMENT)
+    if (node->type == NODE_AST_COMMENT)
     {
         if (node->comment.content)
         {
@@ -75,6 +75,14 @@ Type *type_new_ptr(Type *inner)
 {
     Type *t = type_new(TYPE_POINTER);
     t->inner = inner;
+    return t;
+}
+
+Type *type_new_array(Type *inner, int size)
+{
+    Type *t = type_new(TYPE_ARRAY);
+    t->inner = inner;
+    t->array_size = size;
     return t;
 }
 
@@ -108,6 +116,7 @@ int is_integer_type(Type *t)
             t->kind == TYPE_UINT || t->kind == TYPE_I128 || t->kind == TYPE_U128 ||
             t->kind == TYPE_BITINT || t->kind == TYPE_UBITINT || t->kind == TYPE_C_INT ||
             t->kind == TYPE_C_UINT || t->kind == TYPE_C_LONG || t->kind == TYPE_C_ULONG ||
+            t->kind == TYPE_C_LONG_LONG || t->kind == TYPE_C_ULONG_LONG ||
             t->kind == TYPE_C_SHORT || t->kind == TYPE_C_USHORT || t->kind == TYPE_C_CHAR ||
             t->kind == TYPE_C_UCHAR ||
             (t->kind == TYPE_STRUCT && t->name &&
@@ -278,6 +287,10 @@ static char *type_to_string_impl(Type *t)
         return xstrdup("c_long");
     case TYPE_C_ULONG:
         return xstrdup("c_ulong");
+    case TYPE_C_LONG_LONG:
+        return xstrdup("c_long_long");
+    case TYPE_C_ULONG_LONG:
+        return xstrdup("c_ulong_long");
     case TYPE_C_SHORT:
         return xstrdup("c_short");
     case TYPE_C_USHORT:
@@ -323,17 +336,52 @@ static char *type_to_string_impl(Type *t)
 
     case TYPE_ARRAY:
     {
-        char *inner = type_to_string(t->inner);
-
-        if (t->array_size > 0)
+        if (t->array_size == 0)
         {
-            char *res = xmalloc(strlen(inner) + 20);
-            sprintf(res, "%s[%d]", inner, t->array_size);
+            char *inner = type_to_string(t->inner);
+            char *res = xmalloc(strlen(inner) + 7);
+            sprintf(res, "Slice_%s", inner);
             return res;
         }
 
-        char *res = xmalloc(strlen(inner) + 7);
-        sprintf(res, "Slice_%s", inner);
+        Type *base = t;
+        int *dims = NULL;
+        int dims_cap = 0;
+        int dims_count = 0;
+
+        while (base->kind == TYPE_ARRAY && base->array_size > 0)
+        {
+            if (dims_count == dims_cap)
+            {
+                dims_cap = dims_cap == 0 ? 4 : dims_cap * 2;
+                dims = xrealloc(dims, sizeof(int) * dims_cap);
+            }
+            dims[dims_count++] = base->array_size;
+            base = base->inner;
+        }
+
+        char *inner = type_to_string(base);
+        int total_len = strlen(inner) + 1;
+        for (int i = 0; i < dims_count; i++)
+        {
+            total_len += 20;
+        }
+
+        char *res = xmalloc(total_len);
+        strcpy(res, inner);
+        free(inner);
+
+        char *p = res + strlen(res);
+        for (int i = 0; i < dims_count; i++)
+        {
+            sprintf(p, "[%d]", dims[i]);
+            p += strlen(p);
+        }
+
+        if (dims)
+        {
+            free(dims);
+        }
         return res;
     }
 
@@ -499,6 +547,10 @@ static char *type_to_c_string_impl(Type *t)
         return xstrdup("long");
     case TYPE_C_ULONG:
         return xstrdup("unsigned long");
+    case TYPE_C_LONG_LONG:
+        return xstrdup("long long");
+    case TYPE_C_ULONG_LONG:
+        return xstrdup("unsigned long long");
     case TYPE_C_SHORT:
         return xstrdup("short");
     case TYPE_C_USHORT:
@@ -559,20 +611,53 @@ static char *type_to_c_string_impl(Type *t)
 
     case TYPE_ARRAY:
     {
-        char *inner = type_to_c_string(t->inner);
-
-        if (t->array_size > 0)
+        if (t->array_size == 0)
         {
-            char *res = xmalloc(strlen(inner) + 20);
-            sprintf(res, "%s[%d]", inner, t->array_size);
+            char *inner_zens = type_to_string(t->inner);
+            char *res = xmalloc(strlen(inner_zens) + 7);
+            sprintf(res, "Slice_%s", inner_zens);
+            free(inner_zens);
             return res;
         }
 
-        char *inner_zens = type_to_string(t->inner);
-        char *res = xmalloc(strlen(inner_zens) + 7);
-        sprintf(res, "Slice_%s", inner_zens);
-        free(inner_zens);
+        Type *base = t;
+        int *dims = NULL;
+        int dims_cap = 0;
+        int dims_count = 0;
+
+        while (base->kind == TYPE_ARRAY && base->array_size > 0)
+        {
+            if (dims_count == dims_cap)
+            {
+                dims_cap = dims_cap == 0 ? 4 : dims_cap * 2;
+                dims = xrealloc(dims, sizeof(int) * dims_cap);
+            }
+            dims[dims_count++] = base->array_size;
+            base = base->inner;
+        }
+
+        char *inner = type_to_c_string(base);
+        int total_len = strlen(inner) + 1;
+        for (int i = 0; i < dims_count; i++)
+        {
+            total_len += 20;
+        }
+
+        char *res = xmalloc(total_len);
+        strcpy(res, inner);
         free(inner);
+
+        char *p = res + strlen(res);
+        for (int i = 0; i < dims_count; i++)
+        {
+            sprintf(p, "[%d]", dims[i]);
+            p += strlen(p);
+        }
+
+        if (dims)
+        {
+            free(dims);
+        }
         return res;
     }
 

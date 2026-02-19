@@ -23,6 +23,9 @@ Add a library search path (\-L flag).
 .BR "//> include:" " " \fIpath/to/headers\fR
 Add an include search path (\-I flag).
 .TP
+.BR "//> framework:" " " \fICocoa\fR
+Link against a macOS framework.
+.TP
 .BR "//> cflags:" " " \fI\-Wall \-O3\fR
 Pass arbitrary flags to the C compiler.
 .TP
@@ -41,6 +44,29 @@ Download a file if it does not exist locally.
 .B //> immutable\-by\-default
 Make all variables immutable unless declared with
 .BR mut .
+.SH ADVANCED FEATURES
+.SS OS Guarding
+Prefix directives with an OS name to apply them only on specific platforms.
+Supported prefixes:
+.BR linux: ,
+.BR windows: ,
+.BR macos:
+(or
+.BR darwin: ).
+.PP
+.nf
+//> linux: link: \-lm
+//> windows: link: \-lws2_32
+.fi
+.SS Environment Variable Expansion
+Use
+.B ${VAR}
+syntax to expand environment variables in your directives.
+.PP
+.nf
+//> include: ${HOME}/mylib/include
+//> lib: ${ZC_ROOT}/std
+.fi
 .SH SYNTAX ELEMENTS
 .SS Comments
 .TP

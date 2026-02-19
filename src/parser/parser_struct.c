@@ -205,10 +205,11 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
         char **defaults = NULL;
         int arg_count = 0;
         Type **arg_types = NULL;
+        ASTNode **default_values = NULL;
         char **param_names = NULL;
         int is_varargs = 0;
-        char *args = parse_and_convert_args(ctx, l, &defaults, &arg_count, &arg_types, &param_names,
-                                            &is_varargs, NULL);
+        char *args = parse_and_convert_args(ctx, l, &defaults, &default_values, &arg_count,
+                                            &arg_types, &param_names, &is_varargs, NULL);
 
         char *ret = xstrdup("void");
         if (lexer_peek(l).type == TOK_ARROW)
@@ -226,6 +227,10 @@ ASTNode *parse_trait(ParserContext *ctx, Lexer *l)
             m->func.param_names = param_names;
             m->func.name = mname;
             m->func.args = args;
+            m->func.defaults = defaults;
+            m->func.default_values = default_values;
+            m->func.arg_count = arg_count;
+            m->func.arg_types = arg_types;
             m->func.ret_type = ret;
             m->func.body = NULL;
             if (!methods)
@@ -267,6 +272,13 @@ ASTNode *parse_impl(ParserContext *ctx, Lexer *l)
     lexer_next(l); // eat impl
     Token t1 = lexer_next(l);
     char *name1 = token_strdup(t1);
+
+    // Map primitive types to their C representation for correct mangling
+    // Normalize type name (e.g. int -> int32_t)
+    const char *normalized = normalize_type_name(name1);
+    char *final_name = strdup(normalized);
+    free(name1);
+    name1 = final_name;
 
     char *gen_param = NULL;
     // Check for <T> on the struct name
@@ -846,7 +858,7 @@ ASTNode *parse_struct(ParserContext *ctx, Lexer *l, int is_union, int is_opaque)
     {
         skip_comments(l);
         Token t = lexer_peek(l);
-        // printf("DEBUG: parse_struct loop seeing '%.*s'\n", t.len, t.start);
+
         if (t.type == TOK_RBRACE)
         {
             lexer_next(l);
