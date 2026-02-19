@@ -3583,29 +3583,10 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
 
     // Resolve paths relative to current file
     // Try to resolve relative to current file if not absolute
-    // On Windows, absolute paths can start with drive letter (C:\) or backslash
-    int is_abs = z_is_abs_path(fn);
-
-    if (!is_abs)
-    {
-        char *current_dir = xstrdup(g_current_filename);
-        char *last_slash = z_path_last_sep(current_dir);
-
-        if (last_slash)
-        {
-            *last_slash = 0; // Truncate to directory
-
-            // Handles explicit relative AND implicit relative lookups
-            snprintf(resolved_path, sizeof(resolved_path), "%s/%s", current_dir, fn);
-
-            // If it's an explicit relative path, OR if the file exists at this relative location
-            if (is_explicit_relative || access(resolved_path, R_OK) == 0)
-            {
-                free(fn);
-                fn = xstrdup(resolved_path);
-            }
-        }
-        free(current_dir);
+    char *new_fn = zc_resolve_import_path_alloc(g_current_filename, fn);
+    if (new_fn) {
+        free(fn);
+        fn = new_fn;
     }
 
     // Check if file exists, if not try system-wide paths
@@ -3645,16 +3626,6 @@ ASTNode *parse_import(ParserContext *ctx, Lexer *l)
     if (real_fn) {
         free(fn);
         fn = real_fn;
-    // Only resolve if file exists! On Windows, realpath (_fullpath) resolves non-existent files to
-    // CWD.
-    if (access(fn, R_OK) == 0)
-    {
-        char *real_fn = realpath(fn, NULL);
-        if (real_fn)
-        {
-            free(fn);
-            fn = real_fn;
-        }
     }
 
     // Check if file already imported

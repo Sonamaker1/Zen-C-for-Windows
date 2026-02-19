@@ -81,6 +81,33 @@ double z_get_time(void)
 #endif
 }
 
+#include <stdint.h>
+
+uint64_t z_get_time_ms_u64(void)
+{
+#ifdef _WIN32
+    FILETIME ft;
+    GetSystemTimeAsFileTime(&ft);
+
+    ULARGE_INTEGER uli;
+    uli.LowPart  = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+
+    // FILETIME is 100ns since 1601-01-01
+    const uint64_t EPOCH_DIFF_100NS = 116444736000000000ULL; // 1601->1970 in 100ns
+    uint64_t t100ns = (uint64_t)uli.QuadPart;
+
+    // Convert to Unix epoch milliseconds:
+    uint64_t unix100ns = t100ns - EPOCH_DIFF_100NS;
+    return (uint64_t)unix100ns / (uint64_t)10000ULL; // 100ns -> ms
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    return (uint64_t)ts.tv_sec * 1000ULL + (uint64_t)(ts.tv_nsec / 1000000ULL);
+#endif
+}
+
+
 #define MAX_PATH_SIZE 1024
 
 const char *z_get_temp_dir(void)

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdint.h>
 
 // We keep it low by default.
 #define ZEN_PROBABILITY 10
@@ -164,10 +165,26 @@ static void load_facts(void)
     cJSON_Delete(json);
 }
 
+static uint32_t zen_seed_u32(void)
+{
+    uint64_t ms  = (uint64_t)z_get_time_ms_u64();
+    uint64_t pid = (uint64_t)(uint32_t)z_get_pid();
+
+    // Mix (simple + effective)
+    uint64_t x = ms ^ (pid * 0x9E3779B97F4A7C15ULL);
+
+    // Fold 64 -> 32 + avalanche
+    uint32_t y = (uint32_t)(x ^ (x >> 32));
+    y ^= y >> 16; y *= 0x7FEB352D;
+    y ^= y >> 15; y *= 0x846CA68B;
+    y ^= y >> 16;
+
+    return (uint32_t)y;
+}
+
 void zen_init(void)
 {
-    // Seed random with current time
-    srand((unsigned int)(z_get_time() * 1000.0) ^ z_get_pid());
+    srand(zen_seed_u32());
 }
 
 // Global helper to print.

@@ -21,6 +21,9 @@ pub fn build(b: *std.Build) void {
         "src/lexer",
         "src/analysis",
         "src/lsp",
+        "src/platform",
+        "src/utils",
+        "src/diagnostics" 
     };
 
     const zc_sources = [_][]const u8{
@@ -38,11 +41,14 @@ pub fn build(b: *std.Build) void {
         "src/codegen/codegen_decl.c",
         "src/codegen/codegen_main.c",
         "src/codegen/codegen_utils.c",
+        "src/utils/config.c",
         "src/utils/utils.c",
         "src/utils/path_utils.c",
         "src/utils/zc_path_resolve.c",
         "src/lexer/token.c",
         "src/analysis/typecheck.c",
+        "src/analysis/move_check.c",
+        "src/analysis/const_fold.c",
         "src/lsp/json_rpc.c",
         "src/lsp/lsp_main.c",
         "src/lsp/lsp_analysis.c",
@@ -53,6 +59,9 @@ pub fn build(b: *std.Build) void {
         "src/zen/zen_facts.c",
         "src/repl/repl.c",
         "src/plugins/plugin_manager.c",
+        "src/platform/os.c",
+        "src/platform/console.c",
+        "src/diagnostics/diagnostics.c" 
     };
 
     // --- zc executable (C project) ---

@@ -123,6 +123,8 @@ void z_setup_terminal(void);
  */
 double z_get_time(void);
 
+uint64_t z_get_time_ms_u64(void);
+
 /**
  * @brief Get monotonic time in seconds (high precision).
  */
