@@ -165,7 +165,7 @@ void emit_preamble(ParserContext *ctx, FILE *out)
         {
             // C++ needs explicit casts for void* conversions
             fputs("#define z_malloc(sz) static_cast<char*>(malloc(sz))\n", out);
-            fputs("#define z_realloc(p, sz) static_cast<char*>(realloc(p, sz))\n", out);
+            fputs("#if (!_WIN32)\n#define z_realloc(p, sz) static_cast<char*>(realloc(p, sz))\n#endif\n", out);
         }
         else
         {
@@ -199,64 +199,113 @@ void emit_preamble(ParserContext *ctx, FILE *out)
               "__VA_ARGS__); exit(1); }\n",
               out);
 
-        // C++ compatible readln helper
-        if (g_config.use_cpp)
-        {
-            fputs(
-                "string _z_readln_raw() { "
-                "size_t cap = 64; size_t len = 0; "
-                "char *line = static_cast<char*>(malloc(cap)); "
-                "if(!line) return NULL; "
-                "int c; "
-                "while((c = fgetc(stdin)) != EOF) { "
-                "if(c == '\\n') break; "
-                "if(len + 1 >= cap) { cap *= 2; char *n = static_cast<char*>(realloc(line, cap)); "
-                "if(!n) { free(line); return NULL; } line = n; } "
-                "line[len++] = c; } "
-                "if(len == 0 && c == EOF) { free(line); return NULL; } "
-                "line[len] = 0; return line; }\n",
-                out);
-        }
-        else
-        {
-            fputs("string _z_readln_raw() { "
-                  "size_t cap = 64; size_t len = 0; "
-                  "char *line = z_malloc(cap); "
-                  "if(!line) return NULL; "
-                  "int c; "
-                  "while((c = fgetc(stdin)) != EOF) { "
-                  "if(c == '\\n') break; "
-                  "if(len + 1 >= cap) { cap *= 2; char *n = z_realloc(line, cap); "
-                  "if(!n) { z_free(line); return NULL; } line = n; } "
-                  "line[len++] = c; } "
-                  "if(len == 0 && c == EOF) { z_free(line); return NULL; } "
-                  "line[len] = 0; return line; }\n",
-                  out);
-        }
-        fputs("int _z_scan_helper(const char *fmt, ...) { char *l = "
-              "_z_readln_raw(); if(!l) return "
-              "0; va_list ap; va_start(ap, fmt); int r = vsscanf(l, fmt, ap); "
-              "va_end(ap); "
-              "z_free(l); return r; }\n",
-              out);
-
-        // REPL helpers: suppress/restore stdout.
-        fputs("int _z_orig_stdout = -1;\n", out);
-        fputs("void _z_suppress_stdout() {\n", out);
-        fputs("    fflush(stdout);\n", out);
-        fputs("    if (_z_orig_stdout == -1) _z_orig_stdout = dup(STDOUT_FILENO);\n", out);
-        fputs("    int nullfd = open(ZC_DEVNULL, O_WRONLY);\n", out);
-        fputs("    dup2(nullfd, STDOUT_FILENO);\n", out);
-        fputs("    close(nullfd);\n", out);
-        fputs("}\n", out);
-        fputs("void _z_restore_stdout() {\n", out);
-        fputs("    fflush(stdout);\n", out);
-        fputs("    if (_z_orig_stdout != -1) {\n", out);
-        fputs("        dup2(_z_orig_stdout, STDOUT_FILENO);\n", out);
-        fputs("        close(_z_orig_stdout);\n", out);
-        fputs("        _z_orig_stdout = -1;\n", out);
-        fputs("    }\n", out);
-        fputs("}\n", out);
+        fputs(
+        "#if defined(_WIN32)\n"
+        "#  include <windows.h>\n"
+        "\n"
+        "// NOTE:\n"
+        "// - _z_readln_raw() returns a pointer to a static buffer (overwritten each call).\n"
+        "// - _z_scan_helper() is DISABLED on Windows (returns 0).\n"
+        "// - stdout suppression swaps STD_OUTPUT_HANDLE to NUL.\n"
+        "\n"
+        "static char _z_readln_buf[4096];\n"
+        "\n"
+        "string _z_readln_raw() {\n"
+        "    HANDLE hIn = GetStdHandle(STD_INPUT_HANDLE);\n"
+        "    if (hIn == NULL || hIn == INVALID_HANDLE_VALUE) return NULL;\n"
+        "\n"
+        "    DWORD read = 0;\n"
+        "    size_t pos = 0;\n"
+        "\n"
+        "    for (;;) {\n"
+        "        char ch = 0;\n"
+        "        BOOL ok = ReadFile(hIn, &ch, 1, &read, NULL);\n"
+        "        if (!ok || read == 0) break;\n"
+        "        if (ch == '\\r') continue;\n"
+        "        if (ch == '\\n') break;\n"
+        "        if (pos + 1 >= sizeof(_z_readln_buf)) break;\n"
+        "        _z_readln_buf[pos++] = ch;\n"
+        "    }\n"
+        "\n"
+        "    if (pos == 0 && read == 0) return NULL;\n"
+        "    _z_readln_buf[pos] = 0;\n"
+        "    return _z_readln_buf;\n"
+        "}\n"
+        "\n"
+        "int _z_scan_helper(const char *fmt, ...) {\n"
+        "    (void)fmt;\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "static HANDLE _z_orig_stdout_handle = NULL;\n"
+        "static HANDLE _z_null_stdout_handle = NULL;\n"
+        "\n"
+        "void _z_suppress_stdout() {\n"
+        "    if (_z_orig_stdout_handle != NULL) return;\n"
+        "    _z_orig_stdout_handle = GetStdHandle(STD_OUTPUT_HANDLE);\n"
+        "    _z_null_stdout_handle = CreateFileA(\n"
+        "        \"NUL\", GENERIC_WRITE,\n"
+        "        FILE_SHARE_READ | FILE_SHARE_WRITE,\n"
+        "        NULL, OPEN_EXISTING,\n"
+        "        FILE_ATTRIBUTE_NORMAL, NULL);\n"
+        "    if (_z_null_stdout_handle != NULL && _z_null_stdout_handle != INVALID_HANDLE_VALUE) {\n"
+        "        SetStdHandle(STD_OUTPUT_HANDLE, _z_null_stdout_handle);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "void _z_restore_stdout() {\n"
+        "    if (_z_orig_stdout_handle) {\n"
+        "        SetStdHandle(STD_OUTPUT_HANDLE, _z_orig_stdout_handle);\n"
+        "        _z_orig_stdout_handle = NULL;\n"
+        "    }\n"
+        "    if (_z_null_stdout_handle && _z_null_stdout_handle != INVALID_HANDLE_VALUE) {\n"
+        "        CloseHandle(_z_null_stdout_handle);\n"
+        "    }\n"
+        "    _z_null_stdout_handle = NULL;\n"
+        "}\n"
+        "\n"
+        "#else\n"
+        "#  include <unistd.h>\n"
+        "#  include <fcntl.h>\n"
+        "\n"
+        "static int _z_orig_stdout = -1;\n"
+        "\n"
+        "string _z_readln_raw() { "
+        "size_t cap = 64; size_t len = 0; "
+        "char *line = (char*)malloc(cap); "
+        "if(!line) return NULL; "
+        "int c; "
+        "while((c = fgetc(stdin)) != EOF) { "
+        "if(c == '\\n') break; "
+        "if(len + 1 >= cap) { cap *= 2; char *n = (char*)realloc(line, cap); "
+        "if(!n) { free(line); return NULL; } line = n; } "
+        "line[len++] = c; } "
+        "if(len == 0 && c == EOF) { free(line); return NULL; } "
+        "line[len] = 0; return line; }\n"
+        "\n"
+        "int _z_scan_helper(const char *fmt, ...) { char *l = _z_readln_raw(); if(!l) return 0; "
+        "va_list ap; va_start(ap, fmt); int r = vsscanf(l, fmt, ap); va_end(ap); "
+        "free(l); return r; }\n"
+        "\n"
+        "void _z_suppress_stdout() {\n"
+        "    fflush(stdout);\n"
+        "    if (_z_orig_stdout == -1) _z_orig_stdout = dup(STDOUT_FILENO);\n"
+        "    int nullfd = open(\"/dev/null\", O_WRONLY);\n"
+        "    if (nullfd >= 0) { dup2(nullfd, STDOUT_FILENO); close(nullfd); }\n"
+        "}\n"
+        "\n"
+        "void _z_restore_stdout() {\n"
+        "    fflush(stdout);\n"
+        "    if (_z_orig_stdout != -1) {\n"
+        "        dup2(_z_orig_stdout, STDOUT_FILENO);\n"
+        "        close(_z_orig_stdout);\n"
+        "        _z_orig_stdout = -1;\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "#endif\n",
+        out);
+      
     }
 }
 
@@ -1137,10 +1186,82 @@ void print_type_defs(ParserContext *ctx, FILE *out, ASTNode *nodes)
     if (!g_config.is_freestanding)
     {
         fprintf(out, "typedef char* string;\n");
-
+        
         fprintf(out, "typedef struct { void **data; int len; int cap; } Vec;\n");
         fprintf(out, "#define Vec_new() (Vec){.data=0, .len=0, .cap=0}\n");
 
+        /*
+        * NEW: Win32 branch never emits realloc.
+        */
+        fprintf(out, "#if defined(_WIN32) || defined(_WIN64)\n");
+
+        /* ---------------- Windows: NO realloc ---------------- */
+        if (g_config.use_cpp)
+        {
+            fprintf(out,
+                "void _z_vec_push(Vec *v, void *item) {\n"
+                "    if (v->len >= v->cap) {\n"
+                "        int newcap = v->cap ? (v->cap * 2) : 8;\n"
+                "        void **newdata = static_cast<void**>(malloc((size_t)newcap * sizeof(void*)));\n"
+                "        if (!newdata) { fprintf(stderr, \"Vec OOM\\n\"); exit(1); }\n"
+                "        if (v->data && v->len) memcpy(newdata, v->data, (size_t)v->len * sizeof(void*));\n"
+                "        if (v->data) free(v->data);\n"
+                "        v->data = newdata;\n"
+                "        v->cap = newcap;\n"
+                "    }\n"
+                "    v->data[v->len++] = item;\n"
+                "}\n");
+            fprintf(out,
+                "static inline Vec _z_make_vec(int count, ...) {\n"
+                "    Vec v = {0};\n"
+                "    v.cap = (count > 8) ? count : 8;\n"
+                "    v.data = static_cast<void**>(malloc((size_t)v.cap * sizeof(void*)));\n"
+                "    v.len = 0;\n"
+                "    if (!v.data) { fprintf(stderr, \"Vec OOM\\n\"); exit(1); }\n"
+                "    va_list args;\n"
+                "    va_start(args, count);\n"
+                "    for (int i = 0; i < count; i++) {\n"
+                "        v.data[v.len++] = va_arg(args, void*);\n"
+                "    }\n"
+                "    va_end(args);\n"
+                "    return v;\n"
+                "}\n");
+        }
+        else
+        {
+            fprintf(out,
+                "void _z_vec_push(Vec *v, void *item) {\n"
+                "    if (v->len >= v->cap) {\n"
+                "        int newcap = v->cap ? (v->cap * 2) : 8;\n"
+                "        void **newdata = (void**)z_malloc((usize)newcap * sizeof(void*));\n"
+                "        if (!newdata) { z_panic(\"Vec OOM\"); }\n"
+                "        if (v->data && v->len) memcpy(newdata, v->data, (size_t)v->len * sizeof(void*));\n"
+                "        if (v->data) z_free(v->data);\n"
+                "        v->data = newdata;\n"
+                "        v->cap = newcap;\n"
+                "    }\n"
+                "    v->data[v->len++] = item;\n"
+                "}\n");
+            fprintf(out,
+                "static inline Vec _z_make_vec(int count, ...) {\n"
+                "    Vec v = {0};\n"
+                "    v.cap = (count > 8) ? count : 8;\n"
+                "    v.data = (void**)z_malloc((usize)v.cap * sizeof(void*));\n"
+                "    v.len = 0;\n"
+                "    if (!v.data) { z_panic(\"Vec OOM\"); }\n"
+                "    va_list args;\n"
+                "    va_start(args, count);\n"
+                "    for (int i = 0; i < count; i++) {\n"
+                "        v.data[v.len++] = va_arg(args, void*);\n"
+                "    }\n"
+                "    va_end(args);\n"
+                "    return v;\n"
+                "}\n");
+        }
+
+        fprintf(out, "#else\n");
+
+        /* ---------------- non-Windows: keep existing realloc version ---------------- */
         if (g_config.use_cpp)
         {
             fprintf(out,
@@ -1148,32 +1269,38 @@ void print_type_defs(ParserContext *ctx, FILE *out, ASTNode *nodes)
                     "v->cap = v->cap?v->cap*2:8; "
                     "v->data = static_cast<void**>(realloc(v->data, v->cap * sizeof(void*))); } "
                     "v->data[v->len++] = item; }\n");
-            fprintf(out, "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
-                         "count > 8 ? "
-                         "count : 8; v.data = static_cast<void**>(malloc(v.cap * sizeof(void*))); "
-                         "v.len = 0; va_list "
-                         "args; "
-                         "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
-                         "va_arg(args, void*); } va_end(args); return v; }\n");
+            fprintf(out,
+                    "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
+                    "count > 8 ? count : 8; "
+                    "v.data = static_cast<void**>(malloc(v.cap * sizeof(void*))); "
+                    "v.len = 0; va_list args; va_start(args, count); "
+                    "for(int i=0; i<count; i++) { v.data[v.len++] = va_arg(args, void*); } "
+                    "va_end(args); return v; }\n");
         }
         else
         {
-            fprintf(out, "void _z_vec_push(Vec *v, void *item) { if(v->len >= v->cap) { "
-                         "v->cap = v->cap?v->cap*2:8; "
-                         "v->data = z_realloc(v->data, v->cap * sizeof(void*)); } "
-                         "v->data[v->len++] = item; }\n");
-            fprintf(out, "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
-                         "count > 8 ? "
-                         "count : 8; v.data = z_malloc(v.cap * sizeof(void*)); v.len = 0; va_list "
-                         "args; "
-                         "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
-                         "va_arg(args, void*); } va_end(args); return v; }\n");
+            fprintf(out,
+                    "void _z_vec_push(Vec *v, void *item) { if(v->len >= v->cap) { "
+                    "v->cap = v->cap?v->cap*2:8; "
+                    "v->data = z_realloc(v->data, v->cap * sizeof(void*)); } "
+                    "v->data[v->len++] = item; }\n");
+            fprintf(out,
+                    "static inline Vec _z_make_vec(int count, ...) { Vec v = {0}; v.cap = "
+                    "count > 8 ? count : 8; "
+                    "v.data = z_malloc(v.cap * sizeof(void*)); v.len = 0; va_list args; "
+                    "va_start(args, count); for(int i=0; i<count; i++) { v.data[v.len++] = "
+                    "va_arg(args, void*); } va_end(args); return v; }\n");
         }
+
+        fprintf(out, "#endif\n");
+
+        /* Common macros */
         fprintf(out, "#define Vec_push(v, i) _z_vec_push(&(v), (void*)(long)(i))\n");
 
-        fprintf(out, "#define _z_check_bounds(index, limit) ({ ZC_AUTO_INIT(_i, index); if(_i < 0 "
-                     "|| _i >= (limit)) { fprintf(stderr, \"Index out of bounds: %%ld (limit "
-                     "%%d)\\n\", (long)_i, (int)(limit)); exit(1); } _i; })\n");
+        fprintf(out,
+            "#define _z_check_bounds(index, limit) ({ ZC_AUTO_INIT(_i, index); "
+            "if(_i < 0 || _i >= (limit)) { fprintf(stderr, \"Index out of bounds: %%ld (limit %%d)\\n\", "
+    "(long)_i, (int)(limit)); exit(1); } _i; })\n");
     }
     else
     {

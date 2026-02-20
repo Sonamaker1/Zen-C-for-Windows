@@ -714,8 +714,12 @@ int main(int argc, char **argv)
 
     // Compile C
     char cmd[32768];
-    char *outfile = g_config.output_file ? g_config.output_file : "a.out";
-
+    #if defined(_WIN32) 
+    const char *outfile = g_config.output_file ? g_config.output_file : "a.exe"; 
+    #else 
+    const char *outfile = g_config.output_file ? g_config.output_file : "a.out"; 
+    #endif
+    
     char extra_c_sources[4096] = {0};
     for (int i = 0; i < g_config.c_file_count; i++)
     {
